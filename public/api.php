@@ -1,27 +1,20 @@
 <?php
 /**
  * API 入口 - 处理所有 /api/* 请求
+ *
+ * 本文件的第一原则：响应体必须是合法 JSON。
+ * 任何 PHP 错误、未捕获异常、警告都由 Bootstrap.php 中注册的
+ * 全局处理器接管，绝不应输出 "<br /><b>Fatal error</b>..."
  */
 
-require __DIR__ . '/../app/Core/Bootstrap.php';
+require_once __DIR__ . '/../app/Core/Bootstrap.php';
 
 use MailSystem\Core\Request;
 use MailSystem\Core\Response;
 use MailSystem\Core\Router;
-use MailSystem\Controllers\AuthController;
-use MailSystem\Controllers\DomainController;
-use MailSystem\Controllers\MailboxController;
-use MailSystem\Controllers\PortController;
-use MailSystem\Controllers\EmailController;
-use MailSystem\Controllers\ApiKeyController;
-use MailSystem\Controllers\SettingController;
-use MailSystem\Controllers\UserController;
-use MailSystem\Controllers\SystemController;
-use MailSystem\Controllers\PublicApiController;
-use MailSystem\Controllers\WebmailController;
-use MailSystem\Controllers\SecurityController;
 
-if (session_status() === PHP_SESSION_NONE) {
+// Session（仅在未发送 header 时启动）
+if (session_status() === PHP_SESSION_NONE && !headers_sent()) {
     session_start();
 }
 
@@ -29,24 +22,15 @@ $req = new Request();
 $path = $req->path();
 $method = $req->method();
 
-// 静态资源请求直接放行 (由 nginx 处理)
-if (preg_match('#^/(\.well-known|assets|static|upload|storage|favicon\.ico|robots\.txt)#', $path)) {
-    return false;
-}
-
-// 安装检测
+// 安装检测：已安装时仅允许正常访问，未安装时仅允许返回明确提示
 $installed = file_exists(base_path('storage/installed.lock'));
-if (!$installed && !str_starts_with($path, '/install')) {
-    if (file_exists(base_path('install/install.php'))) {
-        Response::redirect('/install/install.php');
-    } else {
-        Response::error('系统未安装，请访问 /install/install.php', 503, 503);
-    }
+if (!$installed) {
+    Response::error('系统未安装，请先完成安装（执行 bin/install-cli.php 或访问 install/install.php）', 503, 503);
 }
 
 $router = new Router();
 
-// 公开 API (无需登录)
+// ===== 公开 API（无需登录） =====
 $router->post('/api/auth/login', [AuthController::class, 'login']);
 $router->post('/api/auth/register', [AuthController::class, 'register']);
 $router->get('/api/auth/captcha', [AuthController::class, 'captcha']);
@@ -56,7 +40,7 @@ $router->get('/api/webmail/me', [WebmailController::class, 'me']);
 $router->get('/api/setting/public', [SettingController::class, 'public']);
 $router->get('/api/setting/admin-path', [SettingController::class, 'getAdminPath']);
 
-// 需登录 API
+// ===== 需登录 API =====
 $router->group('/api', function (Router $r) {
     $r->get('/auth/me', [AuthController::class, 'me']);
     $r->post('/auth/logout', [AuthController::class, 'logout']);
@@ -119,7 +103,7 @@ $router->group('/api', function (Router $r) {
     $r->get('/security/my-devices', [SecurityController::class, 'myDevices']);
 });
 
-// 对外 API (v1)
+// ===== 对外 API (v1) =====
 $router->group('/api/v1', function (Router $r) {
     $r->post('/send', [PublicApiController::class, 'send']);
     $r->get('/inbox', [PublicApiController::class, 'inbox']);

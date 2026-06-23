@@ -6,6 +6,31 @@
 
 session_start();
 $base = dirname(__DIR__);
+
+// 安全读取 .env（不依赖 putenv/getenv（可能被 disable_functions 禁用）
+if (!function_exists('mail_sys_env_read')) {
+    function mail_sys_env_read(string $key, $default = '') {
+        if (isset($_ENV[$key]) && $_ENV[$key] !== '') return $_ENV[$key];
+        $envFile = dirname(__DIR__) . '/.env';
+        if (!file_exists($envFile)) return $default;
+        $lines = @file($envFile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+        if (!is_array($lines)) return $default;
+        foreach ($lines as $line) {
+            $line = trim($line);
+            if ($line === '' || strpos($line, '#') === 0) continue;
+            if (strpos($line, '=') === false) continue;
+            [$k, $v] = explode('=', $line, 2);
+            $k = trim($k); $v = trim($v);
+            if ((str_starts_with($v, '"') && str_ends_with($v, '"')) ||
+                (str_starts_with($v, "'") && str_ends_with($v, "'"))) {
+                $v = substr($v, 1, -1);
+            }
+            $_ENV[$k] = $v;
+        }
+        return $_ENV[$key] ?? $default;
+    }
+}
+
 $lockFile = $base . '/storage/installed.lock';
 $installed = file_exists($lockFile);
 
@@ -242,7 +267,7 @@ table td, table th { padding: 8px 12px; border-bottom: 1px solid #e1e4e8; font-s
             </div>
             <h3 style="margin-top:24px;">后续操作</h3>
             <ol>
-                <li>访问 <a href="/<?= htmlspecialchars(getenv('ADMIN_PATH') ?: 'admin') ?>/" target="_blank">后台管理</a>，登录管理界面</li>
+                <li>访问 <a href="/<?= htmlspecialchars(mail_sys_env_read('ADMIN_PATH', 'admin')) ?>/" target="_blank">后台管理</a>，登录管理界面</li>
                 <li>在「域名管理」中添加你的域名</li>
                 <li>在「邮箱管理」中创建用户邮箱</li>
                 <li>在「端口管理」中确认 SMTP/POP3/IMAP 端口（可自定义）</li>
@@ -250,7 +275,7 @@ table td, table th { padding: 8px 12px; border-bottom: 1px solid #e1e4e8; font-s
                 <li>在域名 DNS 中配置 MX/A/TXT 记录（后台可查询）</li>
             </ol>
             <p style="margin-top:20px;">
-                <a class="btn" href="/<?= htmlspecialchars(getenv('ADMIN_PATH') ?: 'admin') ?>/">进入后台</a>
+                <a class="btn" href="/<?= htmlspecialchars(mail_sys_env_read('ADMIN_PATH', 'admin')) ?>/">进入后台</a>
                 <a class="btn btn-secondary" href="/">访问前台</a>
             </p>
         <?php endif; ?>

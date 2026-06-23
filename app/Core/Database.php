@@ -25,14 +25,14 @@ class Database
     {
         if (self::$instance === null) {
             $config = config('database');
+            if (!is_array($config) || empty($config)) {
+                throw new Exception('数据库配置缺失，请检查 .env 或 config/app.php');
+            }
             self::$instance = new self($config);
         }
         return self::$instance;
     }
 
-    /**
-     * 显式构造（用于安装阶段或重连）
-     */
     public static function make(array $config): Database
     {
         self::$instance = new self($config);
@@ -46,22 +46,44 @@ class Database
 
     private function connect(): void
     {
+        $host    = $this->config['host']     ?? '127.0.0.1';
+        $port    = (int) ($this->config['port'] ?? 3306);
+        $dbname  = $this->config['database'] ?? '';
+        $charset = $this->config['charset']  ?? 'utf8mb4';
+        $user    = $this->config['username'] ?? '';
+        $pass    = $this->config['password'] ?? '';
+
+        if ($dbname === '') {
+            throw new Exception('数据库名称未配置，请在 .env 中设置 DB_DATABASE');
+        }
+
         $dsn = sprintf(
             'mysql:host=%s;port=%d;dbname=%s;charset=%s',
-            $this->config['host'],
-            $this->config['port'] ?? 3306,
-            $this->config['database'],
-            $this->config['charset'] ?? 'utf8mb4'
+            $host,
+            $port,
+            $dbname,
+            $charset
         );
 
         try {
-            $this->pdo = new PDO($dsn, $this->config['username'], $this->config['password'], [
+            $this->pdo = new PDO($dsn, $user, $pass, [
                 PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,
                 PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
                 PDO::ATTR_EMULATE_PREPARES   => false,
+                PDO::ATTR_TIMEOUT            => 5,
             ]);
         } catch (PDOException $e) {
-            throw new Exception('数据库连接失败: ' . $e->getMessage());
+            $msg = $e->getMessage();
+            if (strpos($msg, "Access denied") !== false) {
+                throw new Exception("数据库连接失败：用户名或密码错误（检查 .env 中的 DB_USERNAME / DB_PASSWORD）");
+            }
+            if (strpos($msg, "Unknown database") !== false) {
+                throw new Exception("数据库 '{$dbname}' 不存在，请先创建数据库");
+            }
+            if (strpos($msg, "Connection refused") !== false || strpos($msg, "No such host") !== false) {
+                throw new Exception("无法连接数据库服务器 {$host}:{$port}，请检查 MySQL 是否启动、主机地址/端口是否正确");
+            }
+            throw new Exception('数据库连接失败：' . $msg);
         }
     }
 

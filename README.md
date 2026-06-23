@@ -61,9 +61,13 @@
 ┌─────────────────────────────────────────────────────────────┐
 │ 宝塔面板 → 文件 → 远程下载                                   │
 │                                                             │
-│ 下载地址:                                                  │
-│ https://github.com/jiujiu123520/mail-system/archive/        │
+│ 下载地址（任选一个）：                                       │
+│ ① GitHub 直连:                                             │
+│   https://github.com/jiujiu123520/mail-system/archive/       │
 │            refs/heads/main.zip                              │
+│ ② 国内加速镜像:                                             │
+│   https://gh.jasonzeng.dev/https://github.com/               │
+│   jiujiu123520/mail-system/archive/refs/heads/main.zip      │
 │                                                             │
 │ 保存路径: /opt/                                             │
 └─────────────────────────────────────────────────────────────┘
@@ -75,9 +79,14 @@
 # SSH登录服务器
 ssh root@你的服务器IP
 
-# 下载到 /opt 目录
+# 下载到 /opt 目录（任选一种方式）
 cd /opt
+
+# 方式①：GitHub 直连
 wget -O mail-system-main.zip https://github.com/jiujiu123520/mail-system/archive/refs/heads/main.zip
+
+# 方式②：国内加速镜像（GitHub 下载慢时使用）
+wget -O mail-system-main.zip https://gh.jasonzeng.dev/https://github.com/jiujiu123520/mail-system/archive/refs/heads/main.zip
 
 # 解压
 unzip mail-system-main.zip
@@ -245,9 +254,15 @@ ss -tlnp | grep -E '25|465|587|110|995|143|993'
 # 1. SSH登录服务器
 ssh root@你的服务器IP
 
-# 2. 下载源码
+# 2. 下载源码（任选一种方式）
 cd /opt
+
+# 方式①：GitHub 直连
 wget -O mail-system-main.zip https://github.com/jiujiu123520/mail-system/archive/refs/heads/main.zip
+
+# 方式②：国内加速镜像（GitHub 下载慢时使用）
+wget -O mail-system-main.zip https://gh.jasonzeng.dev/https://github.com/jiujiu123520/mail-system/archive/refs/heads/main.zip
+
 unzip mail-system-main.zip
 mv mail-system-main mail-system
 cd mail-system
@@ -385,9 +400,15 @@ EXIT;
 **步骤 3：下载源码并部署**
 
 ```bash
-# 下载源码
+# 下载源码（任选一种方式）
 cd /var/www
+
+# 方式①：GitHub 直连
 wget -O mail-system-main.zip https://github.com/jiujiu123520/mail-system/archive/refs/heads/main.zip
+
+# 方式②：国内加速镜像（GitHub 下载慢时使用）
+wget -O mail-system-main.zip https://gh.jasonzeng.dev/https://github.com/jiujiu123520/mail-system/archive/refs/heads/main.zip
+
 unzip mail-system-main.zip
 mv mail-system-main mailsystem
 cd mailsystem

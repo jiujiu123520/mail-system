@@ -12,6 +12,8 @@
 - 🔌 **API 对接**：RESTful API，支持 API Key 认证
 - 🚀 **一键安装**：自动检测系统、自动安装依赖（PHP / MariaDB / Nginx）
 - 🐧 **Linux 部署**：支持 CentOS / Debian / Ubuntu，提供 systemd 服务管理
+- 🔐 **安全功能**：IP封禁、设备指纹追踪、图形验证码、30分钟无操作退出
+- 📡 **DNS 解析**：支持腾讯云DNS、阿里云DNS、华为云DNS一键解析
 
 ## 📋 系统要求
 
@@ -21,7 +23,7 @@
 - **Linux** 内核 3.10+（CentOS 7+/Debian 10+/Ubuntu 18.04+）
 - **Web 服务器**（可选）：Nginx / Apache
 
-## 🚀 一键安装
+## 🚀 安装方式
 
 ### 方式一：宝塔面板安装（推荐国内用户）
 
@@ -34,13 +36,17 @@
 **安装步骤**：
 
 ```bash
-# 1. 拉取源码（国内服务器用代理）
-curl -fsSL https://ghfast.top/https://raw.githubusercontent.com/jiujiu123520/mail-system/main/scripts/install-cn.sh | sudo bash -s -- --mirror
+# 1. 先下载源码包到本地电脑
+# 下载地址：https://github.com/jiujiu123520/mail-system/archive/refs/heads/main.zip
 
-# 2. 进入源码目录
-cd /opt/mail-system
+# 2. 上传到服务器 /opt 目录
+# scp mail-system-main.zip root@your-server:/opt/
 
-# 3. 执行宝塔专用安装脚本
+# 3. 解压并安装
+cd /opt
+unzip mail-system-main.zip
+cd mail-system
+chmod +x scripts/*.sh
 sudo bash scripts/bt-install.sh
 ```
 
@@ -66,11 +72,17 @@ sudo bash scripts/bt-install.sh
 ### 方式二：一键安装脚本（纯净系统）
 
 ```bash
-# 下载代码
-git clone https://github.com/yourname/mail-system.git /opt/mail-system
-cd /opt/mail-system
+# 1. 先下载源码包到本地电脑
+# 下载地址：https://github.com/jiujiu123520/mail-system/archive/refs/heads/main.zip
 
-# 一键安装（自动安装 PHP、MariaDB、Nginx，配置数据库与服务）
+# 2. 上传到服务器 /opt 目录
+# scp mail-system-main.zip root@your-server:/opt/
+
+# 3. 解压并安装
+cd /opt
+unzip mail-system-main.zip
+cd mail-system
+chmod +x scripts/*.sh
 sudo bash scripts/install.sh
 ```
 
@@ -100,41 +112,39 @@ sudo yum install -y php php-fpm php-pdo php-mysqlnd php-sockets php-openssl php-
 # Debian / Ubuntu
 sudo apt install -y php php-fpm php-mysql php-sockets php-openssl php-mbstring php-iconv php-pcntl mariadb-server nginx
 
-# 2. 启动服务
-sudo systemctl enable --now php-fpm mariadb nginx
+# 2. 配置数据库
+sudo systemctl enable --now mariadb
+sudo mysql_secure_installation
 
-# 3. 创建数据库
-mysql -u root -p
-> CREATE DATABASE mail_system CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-> CREATE USER 'mail_user'@'localhost' IDENTIFIED BY 'your_password';
-> GRANT ALL ON mail_system.* TO 'mail_user'@'localhost';
-> FLUSH PRIVILEGES;
+# 3. 创建数据库和用户
+mysql -u root -p <<SQL
+CREATE DATABASE mail_system DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+CREATE USER 'mail_user'@'localhost' IDENTIFIED BY 'your_password';
+GRANT ALL PRIVILEGES ON mail_system.* TO 'mail_user'@'localhost';
+FLUSH PRIVILEGES;
+SQL
 
-# 4. 复制配置并修改
+# 4. 下载源码
+cd /var/www
+sudo git clone https://github.com/jiujiu123520/mail-system.git mailsystem
+cd mailsystem
+
+# 5. 导入数据库
+mysql -u mail_user -p mail_system < database/schema.sql
+
+# 6. 配置
 cp .env.example .env
-vim .env   # 修改数据库连接、域名、管理员账号等
+# 编辑 .env 填入数据库信息
 
-# 5. 运行安装程序
-php bin/install-cli.php \
-  --db-host=127.0.0.1 \
-  --db-name=mail_system \
-  --db-user=mail_user \
-  --db-pass=your_password \
-  --admin-user=admin \
-  --admin-pass=admin123 \
-  --admin-email=admin@yourdomain.com \
-  --default-domain=yourdomain.com \
-  --admin-path=admin \
-  --mail-hostname=mail.yourdomain.com
+# 7. 设置权限
+sudo chown -R nginx:nginx /var/www/mailsystem
+sudo chmod -R 755 /var/www/mailsystem
+sudo chmod -R 770 /var/www/mailsystem/storage /var/www/mailsystem/data /var/www/mailsystem/logs
 
-# 6. 启动邮件服务（守护进程）
-php bin/services.php start
-php bin/services.php status   # 查看状态
+# 8. 配置 Nginx（参考上方宝塔配置）
 
-# 7. 配置 Nginx
-sudo cp config/nginx.conf.example /etc/nginx/conf.d/mail.conf
-sudo vim /etc/nginx/conf.d/mail.conf  # 调整 server_name 与 root
-sudo systemctl reload nginx
+# 9. 启动邮件服务
+sudo bash scripts/service.sh start
 ```
 
 ## 🎯 端口规划
@@ -150,6 +160,28 @@ sudo systemctl reload nginx
 | IMAP | 993 | SSL | IMAPS |
 
 所有端口都可以在后台管理界面里**动态启用/禁用/修改**（后台 → 端口管理）。
+
+## 🔐 安全功能
+
+### 用户注册与验证
+- **图形验证码**：注册时需输入4位数字验证码，防止机器人注册
+- **注册开关控制**：后台可开启/关闭自助注册功能
+- **密码加密传输**：前端对密码进行SHA256加密后传输
+
+### 登录安全
+- **IP封禁**：管理员可封禁指定IP地址，支持临时封禁（到期自动解封）
+- **设备指纹追踪**：记录用户登录设备指纹、IP地址、浏览器UA
+- **设备管理**：用户可查看和管理自己的登录设备，管理员可拉黑可疑设备
+- **登录失败锁定**：连续失败多次后自动锁定
+
+### 会话安全
+- **无操作超时**：30分钟无操作自动退出登录，防止他人使用已登录账号
+- **会话续期**：点击"继续使用"按钮可延长会话
+
+### IP封禁与设备管理
+后台 → 安全中心：
+- IP封禁列表：查看/添加/删除封禁记录
+- 设备管理：查看所有用户登录设备，拉黑/信任/删除设备
 
 ## 🖥️ 后台管理
 

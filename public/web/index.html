@@ -81,7 +81,27 @@ body { font-family: -apple-system, "Segoe UI", "PingFang SC", sans-serif; backgr
       <input v-model="loginForm.password" type="password" placeholder="密码" @keyup.enter="doLogin">
       <button @click="doLogin" :disabled="logging">{{ logging?'登录中...':'登录' }}</button>
       <p v-if="loginError" style="color:#f5222d; margin-top:10px; font-size:12px;">{{ loginError }}</p>
+      <p v-if="allowRegistration" style="text-align:center; margin-top:12px; font-size:12px;">
+        还没有账号？<a href="javascript:;" @click="showRegister=true; loadCaptcha()" style="color:#667eea;">立即注册</a>
+      </p>
     </div>
+
+    <!-- 注册弹窗 -->
+    <div v-if="showRegister" class="login-card" style="position:fixed; top:50%; left:50%; transform:translate(-50%,-50%); z-index:1000; margin-top:0;">
+      <h2 style="text-align:center; margin-bottom:16px; font-size:18px;">用户注册</h2>
+      <input v-model="registerForm.username" placeholder="用户名 (3-32位字母数字下划线)">
+      <input v-model="registerForm.password" type="password" placeholder="密码 (至少6位)">
+      <input v-model="registerForm.email" placeholder="邮箱 (可选)">
+      <div v-if="requireCaptcha" style="display:flex; gap:8px; margin-bottom:12px;">
+        <input v-model="registerForm.captcha_code" placeholder="验证码" style="flex:1;" @keyup.enter="doRegister">
+        <img v-if="registerForm.captcha_svg" :src="'data:image/svg+xml;base64,' + btoa(registerForm.captcha_svg)" @click="loadCaptcha" style="cursor:pointer; height:36px; border-radius:4px;" title="点击刷新">
+        <button v-else @click="loadCaptcha" style="padding:0 8px; cursor:pointer;">刷新</button>
+      </div>
+      <button @click="doRegister" :disabled="registering">{{ registering?'注册中...':'注册' }}</button>
+      <button @click="showRegister=false" style="background:#999; margin-top:8px;">取消</button>
+      <p v-if="registerError" style="color:#f5222d; margin-top:10px; font-size:12px;">{{ registerError }}</p>
+    </div>
+    <div v-if="showRegister" style="position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:999;" @click="showRegister=false"></div>
   </div>
   <div v-else class="webmail">
     <aside class="folders">
@@ -157,6 +177,16 @@ body { font-family: -apple-system, "Segoe UI", "PingFang SC", sans-serif; backgr
       <button class="btn" @click="composer.show=false">取消</button>
       <button class="btn btn-primary" @click="sendEmail" :disabled="composer.sending">{{ composer.sending?'发送中...':'发送' }}</button>
     </div>
+  </div>
+</div>
+
+<!-- 无操作超时警告 -->
+<div v-if="showIdleWarning" style="position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.6); display:flex; align-items:center; justify-content:center; z-index:9999;">
+  <div style="background:#fff; padding:32px; border-radius:12px; text-align:center; max-width:360px;">
+    <div style="font-size:48px; margin-bottom:16px;">⏰</div>
+    <h3 style="margin-bottom:12px;">会话即将过期</h3>
+    <p style="color:#666; margin-bottom:20px;">由于您长时间未操作，{{ idleSeconds }}秒后将自动退出登录</p>
+    <button @click="extendSession" class="btn btn-primary" style="padding:10px 24px; font-size:15px;">继续使用</button>
   </div>
 </div>
 

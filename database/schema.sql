@@ -216,6 +216,61 @@ CREATE TABLE `ms_sessions` (
   KEY `idx_activity` (`last_activity`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- ----------------------------
+-- IP封禁表
+-- ----------------------------
+DROP TABLE IF EXISTS `ms_ip_blacklist`;
+CREATE TABLE `ms_ip_blacklist` (
+  `id` int(11) unsigned NOT NULL AUTO_INCREMENT,
+  `ip_address` varchar(45) NOT NULL COMMENT 'IP地址或CIDR段',
+  `reason` varchar(255) DEFAULT NULL COMMENT '封禁原因',
+  `created_by` int(11) unsigned DEFAULT NULL COMMENT '操作人ID',
+  `expires_at` datetime DEFAULT NULL COMMENT '过期时间，NULL表示永久',
+  `created_at` datetime DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_ip` (`ip_address`),
+  KEY `idx_expires` (`expires_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='IP封禁表';
+
+-- ----------------------------
+-- 设备/登录记录表
+-- ----------------------------
+DROP TABLE IF EXISTS `ms_user_devices`;
+CREATE TABLE `ms_user_devices` (
+  `id` int(11) unsigned NOT NULL AUTO_INCREMENT,
+  `user_id` int(11) unsigned NOT NULL,
+  `fingerprint` varchar(64) NOT NULL COMMENT '设备指纹Hash',
+  `ip_address` varchar(45) DEFAULT NULL COMMENT '登录IP',
+  `user_agent` varchar(500) DEFAULT NULL COMMENT '浏览器UA',
+  `device_name` varchar(128) DEFAULT NULL COMMENT '设备名称',
+  `is_trusted` tinyint(1) NOT NULL DEFAULT '0' COMMENT '是否信任',
+  `is_blocked` tinyint(1) NOT NULL DEFAULT '0' COMMENT '是否拉黑',
+  `last_login_at` datetime DEFAULT NULL COMMENT '最后登录时间',
+  `login_count` int(11) NOT NULL DEFAULT '1' COMMENT '登录次数',
+  `created_at` datetime DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_user` (`user_id`),
+  KEY `idx_fingerprint` (`fingerprint`),
+  KEY `idx_blocked` (`is_blocked`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='用户设备表';
+
+-- ----------------------------
+-- 图形验证码表
+-- ----------------------------
+DROP TABLE IF EXISTS `ms_captchas`;
+CREATE TABLE `ms_captchas` (
+  `id` int(11) unsigned NOT NULL AUTO_INCREMENT,
+  `key` varchar(64) NOT NULL COMMENT '验证码Key',
+  `code` varchar(8) NOT NULL COMMENT '验证码(加密存储)',
+  `expires_at` datetime NOT NULL COMMENT '过期时间',
+  `used` tinyint(1) NOT NULL DEFAULT '0' COMMENT '是否已使用',
+  `created_at` datetime DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_key` (`key`),
+  KEY `idx_expires` (`expires_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='图形验证码表';
+
 SET FOREIGN_KEY_CHECKS = 1;
 
 -- ============================================
@@ -247,9 +302,21 @@ INSERT INTO `ms_settings` (`key_name`, `value`, `group_name`, `description`, `is
 ('mail_hostname', 'mail.local', 'mail', '邮件服务器主机名', 0),
 ('max_mail_size', '26214400', 'mail', '单封邮件最大尺寸 (字节，默认 25MB)', 0),
 ('default_quota_mb', '1024', 'mail', '新邮箱默认配额 (MB)', 0),
-('allow_registration', '0', 'security', '是否允许自助注册', 1),
+('allow_registration', '0', 'security', '是否允许自助注册 (0=关闭, 1=开启)', 1),
+('require_captcha', '1', 'security', '注册是否需要图形验证码 (0=关闭, 1=开启)', 1),
+('require_device_verify', '1', 'security', '新设备是否需要验证 (0=关闭, 1=开启)', 1),
+('max_login_failures', '5', 'security', '登录失败锁定次数', 0),
+('login_lock_minutes', '30', 'security', '登录锁定时长(分钟)', 0),
+('session_timeout', '30', 'security', '无操作超时退出(分钟)', 1),
 ('api_enabled', '1', 'api', '是否启用 API', 1),
 ('api_rate_limit', '60', 'api', 'API 每分钟请求限制', 0),
 ('smtp_banner', 'MailSystem ESMTP', 'mail', 'SMTP 欢迎语', 0),
 ('imap_idle_timeout', '1800', 'mail', 'IMAP IDLE 超时 (秒)', 0),
-('mail_storage', 'maildir', 'mail', '邮件存储格式 (maildir/mbox)', 0);
+('mail_storage', 'maildir', 'mail', '邮件存储格式 (maildir/mbox)', 0),
+('dns_provider', 'manual', 'dns', 'DNS服务商 (manual/aliyun/tencent/huawei)', 1),
+('aliyun_access_key', '', 'dns', '阿里云 AccessKey ID', 0),
+('aliyun_access_secret', '', 'dns', '阿里云 AccessKey Secret', 0),
+('tencent_secret_id', '', 'dns', '腾讯云 SecretId', 0),
+('tencent_secret_key', '', 'dns', '腾讯云 SecretKey', 0),
+('huawei_access_key', '', 'dns', '华为云 AccessKey ID', 0),
+('huawei_access_secret', '', 'dns', '华为云 AccessKey Secret', 0);

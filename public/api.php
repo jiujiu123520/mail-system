@@ -19,6 +19,7 @@ use MailSystem\Controllers\UserController;
 use MailSystem\Controllers\SystemController;
 use MailSystem\Controllers\PublicApiController;
 use MailSystem\Controllers\WebmailController;
+use MailSystem\Controllers\SecurityController;
 
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
@@ -47,6 +48,8 @@ $router = new Router();
 
 // 公开 API (无需登录)
 $router->post('/api/auth/login', [AuthController::class, 'login']);
+$router->post('/api/auth/register', [AuthController::class, 'register']);
+$router->get('/api/auth/captcha', [AuthController::class, 'captcha']);
 $router->post('/api/webmail/login', [WebmailController::class, 'login']);
 $router->post('/api/webmail/logout', [WebmailController::class, 'logout']);
 $router->get('/api/webmail/me', [WebmailController::class, 'me']);
@@ -65,6 +68,7 @@ $router->group('/api', function (Router $r) {
     $r->put('/domains/{id}', [DomainController::class, 'update']);
     $r->delete('/domains/{id}', [DomainController::class, 'delete']);
     $r->get('/domains/{id}/dns', [DomainController::class, 'dnsRecords']);
+    $r->post('/domains/{id}/dns-sync', [DomainController::class, 'dnsSync']);
 
     $r->get('/mailboxes', [MailboxController::class, 'index']);
     $r->get('/mailboxes/{id}', [MailboxController::class, 'show']);
@@ -102,6 +106,17 @@ $router->group('/api', function (Router $r) {
     $r->get('/system/stats', [SystemController::class, 'stats']);
     $r->get('/system/services', [SystemController::class, 'services']);
     $r->get('/system/info', [SystemController::class, 'info']);
+
+    // 安全相关
+    $r->get('/security/ip-list', [SecurityController::class, 'ipList']);
+    $r->post('/security/ip-block', [SecurityController::class, 'ipBlock']);
+    $r->delete('/security/ip/{id}', [SecurityController::class, 'ipUnblock']);
+    $r->get('/security/device-list', [SecurityController::class, 'deviceList']);
+    $r->post('/security/device/{id}/block', [SecurityController::class, 'deviceBlock']);
+    $r->post('/security/device/{id}/unblock', [SecurityController::class, 'deviceUnblock']);
+    $r->delete('/security/device/{id}', [SecurityController::class, 'deviceDelete']);
+    $r->post('/security/device/{id}/trust', [SecurityController::class, 'deviceTrust']);
+    $r->get('/security/my-devices', [SecurityController::class, 'myDevices']);
 });
 
 // 对外 API (v1)

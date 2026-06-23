@@ -1,5 +1,42 @@
 # 更新日志
 
+## [1.1.0] - 2026-06-22
+
+### 新增
+
+#### 安全功能
+- ✨ **图形验证码注册**：4位数字验证码，防止机器人注册
+- ✨ **注册开关控制**：后台可开启/关闭自助注册
+- ✨ **IP封禁管理**：支持临时封禁（指定分钟数）
+- ✨ **设备指纹追踪**：记录登录设备指纹/IP/UA/登录次数
+- ✨ **设备管理**：查看/拉黑/信任/删除登录设备
+- ✨ **登录失败锁定**：连续失败超过阈值自动锁定
+- ✨ **密码SHA256加密传输**：前端加密后传输
+- ✨ **30分钟无操作退出**：前端自动检测，30分钟后提示退出
+
+#### DNS 解析
+- ✨ **DNS 服务商支持**：腾讯云DNS、阿里云DNS、华为云DNS
+- ✨ **一键解析**：配置API凭证后可一键自动添加DNS记录
+- ✨ **详细注释说明**：包含完整的服务商配置指南
+
+#### 数据库新增
+- `ms_ip_blacklist` - IP封禁表
+- `ms_user_devices` - 设备管理表
+- `ms_captchas` - 图形验证码表
+- 新增设置项：`require_captcha`, `require_device_verify`, `session_timeout`, `dns_provider` 等
+
+#### API 新增端点
+- `GET /api/auth/captcha` - 获取图形验证码
+- `POST /api/auth/register` - 用户注册
+- `/api/security/*` - IP封禁与设备管理全系列端点
+- `POST /api/domains/{id}/dns-sync` - 一键DNS同步
+
+### 修复
+- 修复 `CREATE USER IF NOT EXISTS` MariaDB 低版本语法错误
+- 修复 rsync 未安装导致文件部署失败
+- 修复 yum/apt 错误使用 ghfast.top 作为 HTTP 代理
+- 修复 git 代理配置导致连接失败
+
 ## [1.0.2] - 2026-06-22
 
 ### 新增

@@ -19,7 +19,12 @@ class SettingController extends BaseController
     public function public(Request $req): void
     {
         $list = Setting::allPublic();
-        $this->ok(['list' => $list]);
+        // 返回键值对格式，方便前端使用
+        $data = [];
+        foreach ($list as $item) {
+            $data[$item['key_name']] = $item['value'];
+        }
+        $this->ok($data);
     }
 
     public function update(Request $req): void

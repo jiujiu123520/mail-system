@@ -27,124 +27,534 @@
 
 ### 方式一：宝塔面板安装（推荐国内用户）
 
-宝塔面板是国内流行的服务器管理面板，提供可视化界面管理 PHP/MySQL/Nginx。
+宝塔面板提供可视化界面管理服务器，适合不熟悉命令行的用户。
 
-**前置条件**：
-- 已安装宝塔面板（安装命令：`yum install -y wget && wget -O install.sh http://download.bt.cn/install/install_6.0.sh && sh install.sh`）
-- 在宝塔面板安装 PHP 7.4+ 和 MySQL 5.7+
+---
 
-**安装步骤**：
+#### ▎前置条件
+
+```
+┌─────────────────────────────────────────────────┐
+│ ① 已安装宝塔面板                                  │
+│   yum install -y wget && wget -O install.sh      │
+│   http://download.bt.cn/install/install_6.0.sh   │
+│   && sh install.sh                                │
+├─────────────────────────────────────────────────┤
+│ ② 已安装以下软件（宝塔面板→软件商店）              │
+│   ☑ Nginx 1.18+                                  │
+│   ☑ PHP 7.4 / 8.0 / 8.1 / 8.2                    │
+│   ☑ MySQL 5.7+ / MariaDB 10.x                     │
+│   ☑ PHP扩展: pdo_mysql, sockets, openssl,        │
+│     mbstring, iconv, pcntl                       │
+└─────────────────────────────────────────────────┘
+```
+
+> **注意**: PHP 扩展安装方法：宝塔面板 → 软件商店 → PHP设置 → 安装扩展
+
+---
+
+#### ▎安装步骤
+
+**第一步：下载源码**
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│ 宝塔面板 → 文件 → 远程下载                                   │
+│                                                             │
+│ 下载地址:                                                  │
+│ https://github.com/jiujiu123520/mail-system/archive/        │
+│            refs/heads/main.zip                              │
+│                                                             │
+│ 保存路径: /opt/                                             │
+└─────────────────────────────────────────────────────────────┘
+```
+
+或者使用命令行下载：
 
 ```bash
-# 1. 先下载源码包到本地电脑
-# 下载地址：https://github.com/jiujiu123520/mail-system/archive/refs/heads/main.zip
+# SSH登录服务器
+ssh root@你的服务器IP
 
-# 2. 上传到服务器 /opt 目录
-# scp mail-system-main.zip root@your-server:/opt/
-
-# 3. 解压并安装
+# 下载到 /opt 目录
 cd /opt
+wget -O mail-system-main.zip https://github.com/jiujiu123520/mail-system/archive/refs/heads/main.zip
+
+# 解压
 unzip mail-system-main.zip
+mv mail-system-main mail-system
 cd mail-system
 chmod +x scripts/*.sh
+```
+
+**第二步：宝塔创建站点**
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│ 宝塔面板操作：                                              │
+│                                                             │
+│ 网站 → 添加站点 → 填写以下信息：                             │
+│                                                             │
+│  ┌─────────────────────────────────────────────────┐        │
+│  │ 域名:     mail.yourdomain.com                    │        │
+│  │ 根目录:   /www/wwwroot/mailsystem                │        │
+│  │ PHP版本:  选择 PHP 7.4 / 8.0 / 8.1 / 8.2        │        │
+│  │ FTP:     不创建                                  │        │
+│  │ 数据库:  创建 MySQL 数据库                        │        │
+│  │  ├─ 数据库名:  mail_system                       │        │
+│  │  ├─ 用户名:   mail_user                          │        │
+│  │  └─ 密码:    记录下自动生成的密码                 │        │
+│  └─────────────────────────────────────────────────┘        │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**第三步：运行安装脚本**
+
+```bash
+cd /opt/mail-system
 sudo bash scripts/bt-install.sh
 ```
 
-**宝塔面板配置**（安装完成后）：
+安装脚本会提示你输入数据库密码（就是上一步记录的那个），输入后会自动完成：
 
-1. **网站目录设置**：宝塔面板 → 网站 → 选择站点 → 设置 → 网站目录 → 运行目录设置为 `/public`
+```
+┌─────────────────────────────────────────────────────┐
+│ [INFO] 检测到宝塔面板环境                              │
+│ [ OK ] PHP 版本: 80                                   │
+│ [ OK ] MySQL 已安装                                   │
+│                                                       │
+│ 请在宝塔面板完成以下操作：                              │
+│   1. 网站 → 添加站点                                   │
+│      - 填写域名                                       │
+│      - 根目录: /www/wwwroot/mailsystem                 │
+│      - PHP 版本: 80                                   │
+│   2. 创建数据库                                       │
+│   3. 完成后，输入数据库密码继续安装                      │
+│                                                       │
+│ 请输入数据库密码: ****                                 │
+│                                                       │
+│ [ OK ] 文件已部署                                      │
+│ [ OK ] .env 已生成                                     │
+│ [ OK ] 数据库已初始化                                  │
+│ ───────────────────────────────────────────────────   │
+│ 安装完成！                                             │
+└─────────────────────────────────────────────────────┘
+```
 
-2. **伪静态规则**：宝塔面板 → 网站 → 选择站点 → 设置 → 伪静态 → 选择 `laravel` 或添加：
-   ```nginx
-   location / {
-       try_files $uri $uri/ /index.php?$query_string;
-   }
-   ```
+**第四步：配置网站目录**
 
-3. **端口放行**：宝塔面板 → 安全 → 放行端口：`25, 465, 587, 110, 995, 143, 993`
+```
+┌─────────────────────────────────────────────────────────────┐
+│ 宝塔面板 → 网站 → 选择站点(mail.yourdomain.com)              │
+│  → 设置 → 网站目录                                          │
+│                                                             │
+│  ┌─────────────────────────────────────────────────┐        │
+│  │ ☑ 启用防跨站攻击(open_basedir)                   │        │
+│  │ 运行目录: 选择 /public                          │        │
+│  └─────────────────────────────────────────────────┘        │
+│                                                             │
+│ 示例:                                                       │
+│   正确: /www/wwwroot/mailsystem/public                      │
+│   错误: /www/wwwroot/mailsystem                             │
+└─────────────────────────────────────────────────────────────┘
+```
 
-4. **启动邮件服务**：
-   ```bash
-   cd /www/wwwroot/mailsystem
-   sudo bash scripts/service.sh start
-   ```
+**第五步：配置伪静态**
 
-### 方式二：一键安装脚本（纯净系统）
+```
+┌─────────────────────────────────────────────────────────────┐
+│ 宝塔面板 → 网站 → 选择站点 → 设置 → 伪静态                   │
+│                                                             │
+│ 下拉选择: Laravel5                                          │
+│ 或手动填入:                                                 │
+│                                                             │
+│  ┌─────────────────────────────────────────────────┐        │
+│  │ location / {                                      │        │
+│  │     try_files $uri $uri/ /index.php?$query_string;│        │
+│  │ }                                                 │        │
+│  └─────────────────────────────────────────────────┘        │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**第六步：放行邮件端口**
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│ 宝塔面板 → 安全 → 放行端口                                   │
+│                                                             │
+│ 需要放行的端口（共8个）：                                    │
+│  ┌─────────────────────────────────────────────────┐        │
+│  │ 25   → SMTP 发送（必须）                        │        │
+│  │ 465  → SMTP SSL（推荐）                        │        │
+│  │ 587  → SMTP STARTTLS（推荐）                   │        │
+│  │ 110  → POP3（可选）                            │        │
+│  │ 995  → POP3 SSL（推荐）                        │        │
+│  │ 143  → IMAP（可选）                            │        │
+│  │ 993  → IMAP SSL（推荐）                        │        │
+│  │ 8080 → 管理后台端口（如果开启）                  │        │
+│  └─────────────────────────────────────────────────┘        │
+│                                                             │
+│ 放行方法: 安全 → 添加端口规则 → 输入端口号 → 提交            │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**第七步：启动邮件服务**
 
 ```bash
-# 1. 先下载源码包到本地电脑
-# 下载地址：https://github.com/jiujiu123520/mail-system/archive/refs/heads/main.zip
+cd /www/wwwroot/mailsystem
+sudo bash scripts/service.sh start
+```
 
-# 2. 上传到服务器 /opt 目录
-# scp mail-system-main.zip root@your-server:/opt/
+验证启动：
 
-# 3. 解压并安装
+```bash
+# 查看服务状态
+sudo bash scripts/service.sh status
+
+# 查看端口监听
+ss -tlnp | grep -E '25|465|587|110|995|143|993'
+```
+
+**第八步：访问后台**
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│ 打开浏览器访问:                                             │
+│                                                             │
+│   http://mail.yourdomain.com/admin                          │
+│                                                             │
+│  ┌─────────────────────────────────────────────────┐        │
+│  │ 用户名: admin                                    │        │
+│  │ 密码:   安装脚本打印的密码（可在.env中查看）       │        │
+│  └─────────────────────────────────────────────────┘        │
+└─────────────────────────────────────────────────────────────┘
+```
+
+---
+
+### 方式二：一键安装脚本（纯净系统，自动装依赖）
+
+适用于 CentOS 7+/Debian 10+/Ubuntu 18+ 全新系统，脚本自动安装 PHP/MySQL/Nginx。
+
+---
+
+#### ▎安装步骤（全自动）
+
+**第一步：下载源码并运行脚本**
+
+```bash
+# 1. SSH登录服务器
+ssh root@你的服务器IP
+
+# 2. 下载源码
 cd /opt
+wget -O mail-system-main.zip https://github.com/jiujiu123520/mail-system/archive/refs/heads/main.zip
 unzip mail-system-main.zip
+mv mail-system-main mail-system
 cd mail-system
 chmod +x scripts/*.sh
+
+# 3. 运行一键安装脚本
 sudo bash scripts/install.sh
 ```
 
-`install.sh` 会自动完成：
-1. 检测系统类型（CentOS / Debian / Ubuntu）
-2. 安装 PHP 8.x、MariaDB 10.x、Nginx（含必需 PHP 扩展）
-3. 创建数据库与用户
-4. 导入数据库 Schema
-5. 生成 APP_KEY 与 .env 配置文件
-6. 配置 Nginx 反向代理
-7. 注册 systemd 服务，开机自启
+**第二步：交互式配置**
 
-安装过程中会交互询问：
-- 数据库密码
-- 管理员账号/密码
-- 默认域名
-- 管理后台路径（默认 `admin`）
-- 后台访问端口（默认 `8080`）
+运行脚本后，会进入交互问答，如下所示：
 
-### 方式三：手动安装
+```
+┌─────────────────────────────────────────────────────┐
+│  __  __          _ _           ____            _    │
+│ |  \/  | ___  __| (_) ___ ___ / ___|  ___ _ __(_)   │
+│ ...                                                 │
+│        Self-hosted Mail System v1.0.0                │
+│                                                     │
+│ 即将开始安装，配置如下：                              │
+│   Web 目录:   /var/www/mailsystem                    │
+│   数据库:     mail_user@127.0.0.1:3306/mail_system   │
+│   管理员:     admin / aB3xK9mP2wR7                   │
+│   后台路径:   /admin/                                │
+│   邮件主机名: mail.local                             │
+│                                                     │
+│ 按 Enter 继续，Ctrl+C 取消...                        │
+└─────────────────────────────────────────────────────┘
+```
+
+**第三步：等待自动安装**
+
+安装脚本会自动完成以下流程（无需人工干预）：
+
+```
+┌─────────────────────────────────────────────────────┐
+│ 进度条                                            │
+│                                                     │
+│ [1/8] 检测系统类型... ✓ CentOS 7.9                  │
+│ [2/8] 安装 PHP/MySQL/Nginx... ✓                     │
+│ [3/8] 部署文件... ✓                                 │
+│ [4/8] 初始化数据库... ✓                             │
+│ [5/8] 生成配置文件... ✓                             │
+│ [6/8] 配置 Nginx... ✓                              │
+│ [7/8] 配置防火墙... ✓                              │
+│ [8/8] 启动服务... ✓                                │
+│                                                     │
+│ ─────────────────────────────────────────────────   │
+│  MailSystem 安装完成！                               │
+│ ─────────────────────────────────────────────────   │
+│                                                     │
+│  后台地址:  http://服务器IP/admin/                   │
+│  默认账号:  admin                                   │
+│  默认密码:  aB3xK9mP2wR7                            │
+│                                                     │
+│  SMTP:   25 / 465 / 587                             │
+│  POP3:   110 / 995                                  │
+│  IMAP:   143 / 993                                  │
+└─────────────────────────────────────────────────────┘
+```
+
+**第四步：访问后台**
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│ 打开浏览器 → 输入 http://你的服务器IP/admin/                  │
+│                                                             │
+│  ┌─────────────────────────────────────────────────┐        │
+│  │ 用户名: admin                                    │        │
+│  │ 密码:   安装完成后打印的密码                     │        │
+│  │                                                   │        │
+│  │ 登录后建议立即修改默认密码！                       │        │
+│  └─────────────────────────────────────────────────┘        │
+└─────────────────────────────────────────────────────────────┘
+```
+
+---
+
+### 方式三：手动安装（自定义环境）
+
+适合已有 LAMP/LEMP 环境的用户，手动配置每一个组件。
+
+---
+
+#### ▎安装步骤
+
+**步骤 1：安装系统依赖**
 
 ```bash
-# 1. 安装系统依赖
-# CentOS / RHEL
-sudo yum install -y php php-fpm php-pdo php-mysqlnd php-sockets php-openssl php-mbstring php-iconv php-pcntl mariadb-server nginx
+# ┌─ CentOS / RHEL ──────────────────────────────────┐
+sudo yum install -y epel-release
+sudo yum install -y nginx mariadb-server mariadb \
+    php php-fpm php-cli php-mysqlnd php-pdo \
+    php-mbstring php-iconv php-openssl php-curl \
+    php-xml php-zip php-sockets php-pcntl firewalld
 
-# Debian / Ubuntu
-sudo apt install -y php php-fpm php-mysql php-sockets php-openssl php-mbstring php-iconv php-pcntl mariadb-server nginx
+# ┌─ Debian / Ubuntu ────────────────────────────────┐
+sudo apt update
+sudo apt install -y nginx mariadb-server mariadb-client \
+    php php-fpm php-cli php-mysql php-mbstring \
+    php-xml php-curl php-zip php-sockets php-pcntl \
+    php-openssl php-iconv ufw
+```
 
-# 2. 配置数据库
+**步骤 2：配置数据库**
+
+```bash
+# 启动 MariaDB
 sudo systemctl enable --now mariadb
+
+# 安全配置（设置root密码等）
 sudo mysql_secure_installation
 
-# 3. 创建数据库和用户
-mysql -u root -p <<SQL
+# 登录 MySQL
+sudo mysql -u root -p
+```
+
+在 MySQL 提示符下执行：
+
+```sql
+-- ┌─────────────────────────────────────────────┐
+-- │ 创建数据库                                   │
 CREATE DATABASE mail_system DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-CREATE USER 'mail_user'@'localhost' IDENTIFIED BY 'your_password';
+
+-- │ 创建用户并授权                               │
+CREATE USER 'mail_user'@'localhost' IDENTIFIED BY '你的密码';
 GRANT ALL PRIVILEGES ON mail_system.* TO 'mail_user'@'localhost';
 FLUSH PRIVILEGES;
-SQL
 
-# 4. 下载源码
+-- │ 退出                                        │
+EXIT;
+```
+
+**步骤 3：下载源码并部署**
+
+```bash
+# 下载源码
 cd /var/www
-sudo git clone https://github.com/jiujiu123520/mail-system.git mailsystem
+wget -O mail-system-main.zip https://github.com/jiujiu123520/mail-system/archive/refs/heads/main.zip
+unzip mail-system-main.zip
+mv mail-system-main mailsystem
 cd mailsystem
 
-# 5. 导入数据库
+# 导入数据库
 mysql -u mail_user -p mail_system < database/schema.sql
+```
 
-# 6. 配置
-cp .env.example .env
-# 编辑 .env 填入数据库信息
+**步骤 4：创建配置文件**
 
-# 7. 设置权限
+```bash
+# 生成 APP_KEY
+APP_KEY=$(tr -dc 'A-Za-z0-9' </dev/urandom | head -c 32)
+
+# 创建 .env 文件
+cat > /var/www/mailsystem/.env <<ENVEOF
+APP_KEY=$APP_KEY
+APP_DEBUG=false
+APP_URL=http://localhost
+
+DB_HOST=127.0.0.1
+DB_PORT=3306
+DB_NAME=mail_system
+DB_USER=mail_user
+DB_PASS=你的密码
+
+ADMIN_PATH=admin
+ADMIN_PORT=8080
+
+MAIL_HOSTNAME=mail.yourdomain.com
+ENVEOF
+
+# 设置权限
+sudo chmod 600 /var/www/mailsystem/.env
+
+# 创建必要目录
+mkdir -p /var/www/mailsystem/storage/cache
+mkdir -p /var/www/mailsystem/storage/sessions
+mkdir -p /var/www/mailsystem/data/mailboxes
+mkdir -p /var/www/mailsystem/logs
+```
+
+**步骤 5：设置目录权限**
+
+```bash
+# ┌─ CentOS / RHEL ────────────────────────────────┐
 sudo chown -R nginx:nginx /var/www/mailsystem
+# ┌─ Debian / Ubuntu ──────────────────────────────┐
+# sudo chown -R www-data:www-data /var/www/mailsystem
+
+# 通用权限设置
 sudo chmod -R 755 /var/www/mailsystem
-sudo chmod -R 770 /var/www/mailsystem/storage /var/www/mailsystem/data /var/www/mailsystem/logs
+sudo chmod -R 770 /var/www/mailsystem/storage
+sudo chmod -R 770 /var/www/mailsystem/data
+sudo chmod -R 770 /var/www/mailsystem/logs
+```
 
-# 8. 配置 Nginx（参考上方宝塔配置）
+**步骤 6：配置 Nginx**
 
-# 9. 启动邮件服务
+```bash
+sudo tee /etc/nginx/conf.d/mailsystem.conf > /dev/null <<'EOF'
+server {
+    listen 80;
+    server_name mail.yourdomain.com;
+
+    root /var/www/mailsystem/public;
+    index index.php index.html;
+
+    client_max_body_size 50M;
+
+    location / {
+        try_files $uri $uri/ /index.php?$query_string;
+    }
+
+    location ~ \.php$ {
+        fastcgi_pass 127.0.0.1:9000;
+        fastcgi_index index.php;
+        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
+        include fastcgi_params;
+        fastcgi_read_timeout 300;
+    }
+
+    location ~ /(storage|data|logs|\.env|\.git) {
+        deny all;
+    }
+
+    location ~* \.(css|js|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf)$ {
+        expires 30d;
+        access_log off;
+    }
+}
+EOF
+
+# 测试配置并重载
+sudo nginx -t && sudo systemctl reload nginx
+```
+
+**步骤 7：配置 PHP-FPM**
+
+```bash
+# 编辑 PHP-FPM 配置
+sudo sed -i 's/^user = .*/user = nginx/' /etc/php-fpm.d/www.conf
+sudo sed -i 's/^group = .*/group = nginx/' /etc/php-fpm.d/www.conf
+sudo sed -i 's|^listen = .*|listen = 127.0.0.1:9000|' /etc/php-fpm.d/www.conf
+
+# 启动 PHP-FPM
+sudo systemctl enable --now php-fpm
+```
+
+**步骤 8：安装系统 + 启动服务**
+
+```bash
+cd /var/www/mailsystem
+
+# 运行安装程序（初始化管理员账户等）
+php bin/install-cli.php \
+    --admin-user=admin \
+    --admin-pass=你的管理员密码 \
+    --admin-email=admin@yourdomain.com \
+    --default-domain=yourdomain.com
+
+# 启动邮件服务
 sudo bash scripts/service.sh start
+
+# 验证状态
+sudo bash scripts/service.sh status
+```
+
+**步骤 9：配置防火墙**
+
+```bash
+# ┌─ CentOS (firewalld) ───────────────────────────┐
+sudo firewall-cmd --permanent --add-service=http
+sudo firewall-cmd --permanent --add-port=25/tcp
+sudo firewall-cmd --permanent --add-port=465/tcp
+sudo firewall-cmd --permanent --add-port=587/tcp
+sudo firewall-cmd --permanent --add-port=110/tcp
+sudo firewall-cmd --permanent --add-port=995/tcp
+sudo firewall-cmd --permanent --add-port=143/tcp
+sudo firewall-cmd --permanent --add-port=993/tcp
+sudo firewall-cmd --reload
+
+# ┌─ Debian/Ubuntu (ufw) ─────────────────────────┐
+sudo ufw allow http
+sudo ufw allow 25/tcp && sudo ufw allow 465/tcp
+sudo ufw allow 587/tcp && sudo ufw allow 110/tcp
+sudo ufw allow 995/tcp && sudo ufw allow 143/tcp
+sudo ufw allow 993/tcp
+sudo ufw --force enable
+```
+
+---
+
+#### ▎三种安装方式对比
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│  对比项目      │  宝塔面板安装    │  一键脚本安装    │  手动安装         │
+├─────────────────────────────────────────────────────────────────────────┤
+│  难度          │  ⭐ 低          │  ⭐⭐ 中低       │  ⭐⭐⭐⭐ 高      │
+│  自动化程度    │  部分自动        │  全自动          │  全部手动         │
+│  适合用户      │  新手/国内用户   │  中等用户        │  资深用户         │
+│  环境要求      │  已装宝塔面板    │  纯净系统        │  任意环境         │
+│  依赖安装      │  面板手动装      │  自动安装        │  手动安装         │
+│  Nginx配置     │  面板可视化      │  自动配置        │  手动配置         │
+│  耗时          │  ~10分钟         │  ~15分钟         │  ~30分钟          │
+└─────────────────────────────────────────────────────────────────────────┘
 ```
 
 ## 🎯 端口规划

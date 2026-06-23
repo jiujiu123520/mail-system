@@ -54,17 +54,22 @@ class ServiceManager
         $this->logger->info('ServiceManager starting');
         $this->loadFromDb();
         if (empty($this->servers)) {
-            echo "No enabled services to start\n";
+            echo "  没有已启用的邮件端口 → 跳过邮件服务监听器启动\n";
+            echo "  提示: 仍可通过 Web 后台使用邮件功能，只是外部邮件客户端不能连接本机端口\n";
             return;
         }
+        $count = 0;
         foreach ($this->servers as $s) {
             try {
                 // 启动一个独立进程
                 $this->fork($s);
+                $count++;
             } catch (\Throwable $e) {
                 $this->logger->error('Start failed: ' . $e->getMessage());
+                echo "  [ERROR] " . get_class($s) . " 启动失败: " . $e->getMessage() . "\n";
             }
         }
+        echo "  已启动 $count 个邮件服务进程\n";
     }
 
     public function stop(): void

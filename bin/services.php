@@ -19,12 +19,23 @@ $manager = new ServiceManager();
 
 switch ($action) {
     case 'start':
-        echo "Starting mail services...\n";
+        echo "MailSystem 启动邮件服务...\n";
         $manager->start();
-        echo "Done.\n";
+        echo "done.\n";
+        // 显示最终状态
+        $st = $manager->status();
+        if (empty($st)) {
+            echo "提示: 数据库中没有启用的端口配置，邮件服务监听未启动。\n";
+            echo "      请登录后台 [设置 → 邮件端口] 确认端口是否已启用。\n";
+        } else {
+            echo "运行中的服务:\n";
+            foreach ($st as $s) {
+                echo "  PID {$s['pid']} ({$s['file']}) - " . ($s['alive'] ? 'ALIVE' : 'DEAD') . "\n";
+            }
+        }
         break;
     case 'stop':
-        echo "Stopping mail services...\n";
+        echo "MailSystem 停止邮件服务...\n";
         $manager->stop();
         break;
     case 'status':
@@ -32,13 +43,14 @@ switch ($action) {
         if (empty($st)) {
             echo "No services running.\n";
         } else {
-            echo "Running services:\n";
+            echo "运行中的邮件服务:\n";
             foreach ($st as $s) {
                 echo "  PID {$s['pid']} ({$s['file']}) - " . ($s['alive'] ? 'ALIVE' : 'DEAD') . "\n";
             }
         }
         break;
     case 'restart':
+        echo "MailSystem 重启邮件服务...\n";
         $manager->stop();
         sleep(1);
         $manager->start();
@@ -46,7 +58,11 @@ switch ($action) {
         break;
     case 'test':
         $ports = \MailSystem\Models\Port::allEnabled();
-        echo "Testing mail services...\n";
+        echo "测试邮件服务连接...\n";
+        if (empty($ports)) {
+            echo "  没有已启用的端口。请在后台 [设置 → 邮件端口] 配置。\n";
+            break;
+        }
         foreach ($ports as $p) {
             $errno = 0; $errstr = '';
             $sock = @stream_socket_client("tcp://127.0.0.1:{$p['port']}", $errno, $errstr, 3);

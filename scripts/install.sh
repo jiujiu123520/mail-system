@@ -15,9 +15,21 @@ NC='\033[0m'
 
 # 路径
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
-APP_DIR="$SCRIPT_DIR"
+APP_DIR="$( cd "$SCRIPT_DIR/.." && pwd )"
 WEB_ROOT_DEFAULT="/var/www/mailsystem"
 WEB_ROOT="${WEB_ROOT:-$WEB_ROOT_DEFAULT}"
+
+# PHP 可执行文件（自动识别宝塔环境）
+PHP_BIN="${PHP_BIN:-}"
+if [ -z "$PHP_BIN" ]; then
+    for ver in 83 82 81 80 74; do
+        if [ -x "/www/server/php/$ver/bin/php" ]; then
+            PHP_BIN="/www/server/php/$ver/bin/php"
+            break
+        fi
+    done
+fi
+[ -z "$PHP_BIN" ] && PHP_BIN=$(command -v php 2>/dev/null || echo php)
 
 # 宝塔环境检测
 BT_PANEL_PATH="/www/server/panel"
@@ -275,18 +287,27 @@ configure_db() {
     log_info "初始化数据库..."
     # 启动 MySQL/MariaDB
     if command -v systemctl >/dev/null; then
-        systemctl enable --now mariadb || systemctl enable --now mysql || true
+        systemctl enable --now mariadb 2>/dev/null || systemctl enable --now mysql 2>/dev/null || true
     fi
     sleep 2
 
     # 等待数据库就绪
-    for i in 1 2 3 4 5; do
+    for i in 1 2 3 4 5 6 7 8 9 10; do
         if mysqladmin ping -h "$DB_HOST" -P "$DB_PORT" 2>/dev/null; then break; fi
+        if [ -n "$BT_MYSQL_ROOT_PASS" ]; then
+            mysqladmin -uroot -p"$BT_MYSQL_ROOT_PASS" ping -h "$DB_HOST" -P "$DB_PORT" 2>/dev/null && break
+        fi
         sleep 2
     done
 
+    # 构造 root 连接参数（支持宝塔和普通系统）
+    local ROOT_CONN=("-uroot")
+    if [ -n "$BT_MYSQL_ROOT_PASS" ]; then
+        ROOT_CONN+=("-p$BT_MYSQL_ROOT_PASS")
+    fi
+
     # 创建数据库与用户
-    mysql -h "$DB_HOST" -P "$DB_PORT" -uroot <<SQL
+    mysql -h "$DB_HOST" -P "$DB_PORT" "${ROOT_CONN[@]}" <<SQL
 CREATE DATABASE IF NOT EXISTS \`$DB_NAME\` DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 CREATE USER IF NOT EXISTS '$DB_USER'@'localhost' IDENTIFIED BY '$DB_PASS';
 CREATE USER IF NOT EXISTS '$DB_USER'@'127.0.0.1' IDENTIFIED BY '$DB_PASS';
@@ -300,23 +321,43 @@ SQL
 deploy_files() {
     log_info "部署文件到 $WEB_ROOT ..."
     mkdir -p "$WEB_ROOT"
-    # 复制文件
-    rsync -a --delete \
-        --exclude='.git' \
-        --exclude='.env' \
-        --exclude='storage/installed.lock' \
-        --exclude='storage/cache' \
-        --exclude='storage/sessions' \
-        --exclude='logs' \
-        --exclude='data' \
-        "$APP_DIR/" "$WEB_ROOT/"
 
-    # 目录权限
+    # 优先使用 rsync，退化为 cp -r
+    if command -v rsync >/dev/null 2>&1; then
+        rsync -a --delete \
+            --exclude='.git' \
+            --exclude='.env' \
+            --exclude='storage/installed.lock' \
+            --exclude='storage/cache' \
+            --exclude='storage/sessions' \
+            --exclude='logs' \
+            --exclude='data' \
+            "$APP_DIR/" "$WEB_ROOT/"
+    else
+        # cp -r 复制方式（先清空，避免与旧文件混淆）
+        cd "$APP_DIR"
+        for item in *; do
+            [ "$item" = ".git" ] && continue
+            [ "$item" = ".env" ] && continue
+            [ "$item" = "storage" ] && continue
+            [ "$item" = "logs" ] && continue
+            [ "$item" = "data" ] && continue
+            cp -r "$item" "$WEB_ROOT/" 2>/dev/null || true
+        done
+        cd - >/dev/null 2>&1
+    fi
+
+    # 重建必要目录
     mkdir -p "$WEB_ROOT/storage/cache" "$WEB_ROOT/storage/sessions" \
              "$WEB_ROOT/data/mailboxes" "$WEB_ROOT/logs"
-    chown -R nginx:nginx "$WEB_ROOT" 2>/dev/null || chown -R www-data:www-data "$WEB_ROOT" 2>/dev/null || true
-    chmod -R 755 "$WEB_ROOT"
-    chmod -R 770 "$WEB_ROOT/storage" "$WEB_ROOT/data" "$WEB_ROOT/logs"
+
+    # 权限
+    chown -R nginx:nginx "$WEB_ROOT" 2>/dev/null || true
+    if [ ! -w "$WEB_ROOT" ] || ! ls -ld "$WEB_ROOT" | grep -q nginx; then
+        chown -R www-data:www-data "$WEB_ROOT" 2>/dev/null || true
+    fi
+    chmod -R 755 "$WEB_ROOT" 2>/dev/null || true
+    chmod -R 770 "$WEB_ROOT/storage" "$WEB_ROOT/data" "$WEB_ROOT/logs" 2>/dev/null || true
     log_ok "文件已部署"
 }
 
@@ -353,13 +394,19 @@ EOF
 
 run_installer() {
     log_info "运行 Web 安装程序..."
-    # 通过 CLI 模拟安装
-    php "$WEB_ROOT/bin/install-cli.php" \
-        --db-host="$DB_HOST" --db-port="$DB_PORT" --db-name="$DB_NAME" \
-        --db-user="$DB_USER" --db-pass="$DB_PASS" \
-        --admin-user="$ADMIN_USER" --admin-pass="$ADMIN_PASS" --admin-email="$ADMIN_EMAIL" \
-        --admin-path="$ADMIN_PATH" --admin-port="$ADMIN_PORT" \
+    local INSTALL_ARGS=(
+        --db-host="$DB_HOST" --db-port="$DB_PORT" --db-name="$DB_NAME"
+        --db-user="$DB_USER" --db-pass="$DB_PASS"
+        --admin-user="$ADMIN_USER" --admin-pass="$ADMIN_PASS" --admin-email="$ADMIN_EMAIL"
+        --admin-path="$ADMIN_PATH" --admin-port="$ADMIN_PORT"
         --mail-hostname="$MAIL_HOSTNAME" --app-url="http://localhost"
+    )
+    # 宝塔/有 root 密码的环境传入 root 密码
+    if [ -n "$BT_MYSQL_ROOT_PASS" ]; then
+        INSTALL_ARGS+=("--db-root-pass=$BT_MYSQL_ROOT_PASS")
+    fi
+
+    "$PHP_BIN" "$WEB_ROOT/bin/install-cli.php" "${INSTALL_ARGS[@]}"
     log_ok "系统已安装"
 }
 
@@ -475,8 +522,8 @@ After=network.target mysql.service mariadb.service php-fpm.service
 Type=simple
 User=root
 WorkingDirectory=$WEB_ROOT
-ExecStart=/usr/bin/php $WEB_ROOT/bin/services.php start
-ExecStop=/usr/bin/php $WEB_ROOT/bin/services.php stop
+ExecStart=$PHP_BIN $WEB_ROOT/bin/services.php start
+ExecStop=$PHP_BIN $WEB_ROOT/bin/services.php stop
 Restart=always
 RestartSec=5
 StandardOutput=append:$WEB_ROOT/logs/services.log
@@ -486,8 +533,8 @@ StandardError=append:$WEB_ROOT/logs/services.log
 WantedBy=multi-user.target
 EOF
     systemctl daemon-reload
-    systemctl enable mailsystem
-    systemctl restart mailsystem
+    systemctl enable mailsystem 2>/dev/null || true
+    systemctl restart mailsystem 2>/dev/null || true
     log_ok "服务已配置并启动"
 }
 

@@ -190,9 +190,69 @@ body { font-family: -apple-system, "Segoe UI", "PingFang SC", sans-serif; backgr
   </div>
 </div>
 
-<script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
-<script src="https://unpkg.com/element-plus"></script>
-<script src="https://unpkg.com/element-plus/dist/locale/zh-cn.min.js"></script>
-<script src="assets/app.js"></script>
+<!--
+  Vue / Element Plus 加载器：使用多 CDN 回退，避免国内/局域网中
+  unpkg.com 被墙导致 `{{ xxx }}` 模板原样显示。
+  1. 先尝试 unpkg；
+  2. 失败回退到 jsdelivr；
+  3. 再次失败回退到 staticfile（国内 CDN）。
+-->
+<script>
+(function() {
+    var sources = [
+        {
+            vue:   'https://unpkg.com/vue@3/dist/vue.global.prod.js',
+            ep:    'https://unpkg.com/element-plus',
+            locale:'https://unpkg.com/element-plus/dist/locale/zh-cn.min.js',
+        },
+        {
+            vue:   'https://cdn.jsdelivr.net/npm/vue@3/dist/vue.global.prod.js',
+            ep:    'https://cdn.jsdelivr.net/npm/element-plus',
+            locale:'https://cdn.jsdelivr.net/npm/element-plus/dist/locale/zh-cn.min.js',
+        },
+        {
+            vue:   'https://cdn.staticfile.org/vue/3.4.21/vue.global.prod.min.js',
+            ep:    'https://cdn.staticfile.org/element-plus/2.7.0/index.full.min.js',
+            locale:'https://cdn.staticfile.org/element-plus/2.7.0/locale/zh-cn.min.js',
+        },
+    ];
+
+    function loadScript(src, onLoad, onErr) {
+        var s = document.createElement('script');
+        s.src = src;
+        s.onload = onLoad;
+        s.onerror = onErr;
+        document.head.appendChild(s);
+    }
+
+    function trySource(i) {
+        if (i >= sources.length) {
+            alert('前端依赖加载失败，请检查网络或更换 CDN 源');
+            return;
+        }
+        var src = sources[i];
+        var pending = 3;
+        var failed = false;
+        function oneDone() {
+            pending--;
+            if (pending === 0 && !failed) {
+                var app = document.createElement('script');
+                app.src = 'assets/app.js';
+                document.head.appendChild(app);
+            }
+        }
+        function oneFail() {
+            if (failed) return;
+            failed = true;
+            trySource(i + 1);
+        }
+        loadScript(src.vue,    oneDone, oneFail);
+        loadScript(src.ep,     oneDone, oneFail);
+        loadScript(src.locale, oneDone, oneFail);
+    }
+
+    trySource(0);
+})();
+</script>
 </body>
 </html>

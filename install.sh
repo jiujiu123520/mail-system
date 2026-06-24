@@ -4,12 +4,12 @@
 # 支持: CentOS 7+ / Debian 9+ / Ubuntu 18+ / 宝塔面板
 #
 # 用法 (一键安装):
-#   curl -sSL https://raw.githubusercontent.com/your-org/mail-system/main/install.sh | bash
+#   curl -sSL https://raw.githubusercontent.com/jiujiu123520/mail-system/main/install.sh | bash
 #   或
-#   wget -qO- https://raw.githubusercontent.com/your-org/mail-system/main/install.sh | bash
+#   wget -qO- https://raw.githubusercontent.com/jiujiu123520/mail-system/main/install.sh | bash
 #
 # 用法 (带参数):
-#   curl -sSL https://raw.githubusercontent.com/your-org/mail-system/main/install.sh | bash -s -- --domain=mail.example.com --admin-pass=yourpass
+#   curl -sSL https://raw.githubusercontent.com/jiujiu123520/mail-system/main/install.sh | bash -s -- --domain=mail.example.com --admin-pass=yourpass
 # ============================================
 
 set -e
@@ -22,7 +22,7 @@ BLUE='\033[0;34m'
 NC='\033[0m'
 
 # 版本与下载地址
-GITHUB_REPO="your-org/mail-system"
+GITHUB_REPO="jiujiu123520/mail-system"
 GITHUB_BRANCH="main"
 DOWNLOAD_URL="https://github.com/${GITHUB_REPO}/archive/refs/heads/${GITHUB_BRANCH}.tar.gz"
 

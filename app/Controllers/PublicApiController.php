@@ -22,6 +22,7 @@ use MailSystem\Models\ApiKey;
 use MailSystem\Models\Email;
 use MailSystem\Models\Mailbox;
 use MailSystem\Models\Setting;
+use MailSystem\Core\Logger;
 
 class PublicApiController extends BaseController
 {
@@ -83,6 +84,32 @@ class PublicApiController extends BaseController
     public function send(Request $req): void
     {
         $this->requirePerm('send');
+
+        // --- API 邮件发送速率限制 (简易版，仅限当前请求内) ---
+        static $lastSendTime = [];
+        static $sendCountInSecond = [];
+
+        $apiKeyId = $GLOBALS['__api_key_id'] ?? 0;
+        $currentTime = microtime(true);
+        $rateLimit = config('mail.rate_limit_per_second', 10); // 使用与 EmailController 相同的配置
+
+        if (!isset($lastSendTime[$apiKeyId])) {
+            $lastSendTime[$apiKeyId] = 0;
+            $sendCountInSecond[$apiKeyId] = 0;
+        }
+
+        if (($currentTime - $lastSendTime[$apiKeyId]) < 1) { // 在同一秒内
+            if ($sendCountInSecond[$apiKeyId] >= $rateLimit) {
+                Logger::warn(sprintf('API Key %d hit rate limit for sending emails.', $apiKeyId));
+                Response::error('邮件发送频率过高，请稍后再试', 429, 429);
+            }
+            $sendCountInSecond[$apiKeyId]++;
+        } else { // 新的一秒
+            $lastSendTime[$apiKeyId] = $currentTime;
+            $sendCountInSecond[$apiKeyId] = 1;
+        }
+        // --- 邮件发送速率限制结束 ---
+
         $from = (string) $req->input('from');
         $to   = (array) $req->input('to', []);
         $cc   = (array) $req->input('cc', []);
@@ -114,6 +141,16 @@ class PublicApiController extends BaseController
         $messageId = '';
         if (preg_match('/^Message-ID:\s*<?([^>\s]+)/mi', $raw, $mm)) $messageId = $mm[1];
 
+        // 投递到 SENT
+        $maildirFilename = '';
+        try {
+            $storage = new \MailSystem\Core\MailStorage($m['full_address']);
+            $maildirFilename = $storage->append($raw, 'SENT');
+        } catch (\Throwable $e) {
+            Logger::error(sprintf('API send mail to SENT folder failed for mailbox %s: %s', $m['full_address'], $e->getMessage()));
+            Response::error('写入发件箱失败', 500, 500);
+        }
+
         $emailId = Email::create([
             'mailbox_id'   => $m['id'],
             'message_id'   => $messageId,
@@ -129,6 +166,7 @@ class PublicApiController extends BaseController
             'folder'       => 'SENT',
             'direction'    => 'out',
             'status'       => 'sent',
+            'maildir_filename' => $maildirFilename,
         ]);
 
         // 投递
@@ -139,7 +177,7 @@ class PublicApiController extends BaseController
             if (!$t) { $failed[] = $a; continue; }
             try {
                 $st = new \MailSystem\Core\MailStorage($t['full_address']);
-                $st->deliver($raw);
+                $maildirFilenameInbox = $st->deliver($raw);
                 Email::create([
                     'mailbox_id'   => $t['id'],
                     'message_id'   => $messageId,
@@ -153,6 +191,7 @@ class PublicApiController extends BaseController
                     'folder'       => 'INBOX',
                     'direction'    => 'in',
                     'status'       => 'received',
+                    'maildir_filename' => $maildirFilenameInbox,
                 ]);
                 $delivered++;
             } catch (\Throwable $e) {

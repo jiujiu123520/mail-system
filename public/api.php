@@ -16,7 +16,6 @@ use MailSystem\Core\Router;
 
 // 命名空间：控制器（仅在路由中使用 short-class 名，避免双反斜杠解析出错）
 use MailSystem\Controllers\AuthController;
-use MailSystem\Controllers\WebmailController;
 use MailSystem\Controllers\SettingController;
 use MailSystem\Controllers\DomainController;
 use MailSystem\Controllers\MailboxController;
@@ -24,9 +23,12 @@ use MailSystem\Controllers\PortController;
 use MailSystem\Controllers\EmailController;
 use MailSystem\Controllers\ApiKeyController;
 use MailSystem\Controllers\UserController;
+use MailSystem\Controllers\UserGroupController;
+use MailSystem\Controllers\MembershipCardController;
 use MailSystem\Controllers\SystemController;
 use MailSystem\Controllers\SecurityController;
 use MailSystem\Controllers\PublicApiController;
+use MailSystem\Controllers\WebmailController;
 
 // Session（仅在未发送 header 时启动）
 if (session_status() === PHP_SESSION_NONE && !headers_sent()) {
@@ -50,19 +52,21 @@ $router->post('/api/auth/login',    [AuthController::class, 'login']);
 $router->post('/api/auth/register', [AuthController::class, 'register']);
 $router->get('/api/auth/captcha',   [AuthController::class, 'captcha']);
 
-$router->post('/api/webmail/login',  [WebmailController::class, 'login']);
-$router->post('/api/webmail/logout', [WebmailController::class, 'logout']);
-$router->get('/api/webmail/me',      [WebmailController::class, 'me']);
 
 $router->get('/api/setting/public',     [SettingController::class, 'public']);
 $router->get('/api/setting/admin-path', [SettingController::class, 'getAdminPath']);
+
+// Webmail 登录相关（无需管理员登录，但需要邮箱认证）
+$router->post('/api/webmail/login',  [WebmailController::class, 'login']);
+$router->post('/api/webmail/logout', [WebmailController::class, 'logout']);
+$router->get('/api/webmail/me',      [WebmailController::class, 'me']);
 
 // ===== 需登录 API（/api 下）=====
 $router->group('/api', function (Router $r) {
     // 认证 / 账号
     $r->get('/auth/me',                              [AuthController::class, 'me']);
     $r->post('/auth/logout',                         [AuthController::class, 'logout']);
-    $r->post('/auth/change-password',                [AuthController::class, 'changePassword']);
+    $r->post('/user/change-password',                [UserController::class, 'changePassword']);
 
     // 域名
     $r->get('/domains',                              [DomainController::class, 'index']);
@@ -110,12 +114,26 @@ $router->group('/api', function (Router $r) {
     $r->post('/users',                               [UserController::class, 'create']);
     $r->put('/users/{id}',                           [UserController::class, 'update']);
     $r->delete('/users/{id}',                        [UserController::class, 'delete']);
-    $r->get('/logs',                                 [UserController::class, 'logs']);
+
+    // 用户组
+    $r->get('/user-groups',                          [UserGroupController::class, 'index']);
+    $r->get('/user-groups/{id}',                     [UserGroupController::class, 'show']);
+    $r->post('/user-groups',                         [UserGroupController::class, 'create']);
+    $r->put('/user-groups/{id}',                     [UserGroupController::class, 'update']);
+    $r->delete('/user-groups/{id}',                  [UserGroupController::class, 'delete']);
+
+    // 卡密
+    $r->get('/membership-cards',                     [MembershipCardController::class, 'index']);
+    $r->post('/membership-cards/generate',          [MembershipCardController::class, 'generate']);
+    $r->put('/membership-cards/{id}',                [MembershipCardController::class, 'update']);
+    $r->delete('/membership-cards/{id}',             [MembershipCardController::class, 'delete']);
 
     // 系统
     $r->get('/system/stats',                         [SystemController::class, 'stats']);
     $r->get('/system/services',                      [SystemController::class, 'services']);
     $r->get('/system/info',                          [SystemController::class, 'info']);
+    $r->get('/system/status',                        [SystemController::class, 'getServerStatus']);
+    $r->get('/system/logs',                          [SystemController::class, 'logs']);
 
     // 安全
     $r->get('/security/ip-list',                     [SecurityController::class, 'ipList']);

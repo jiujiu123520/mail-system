@@ -1,6 +1,6 @@
 /* MailSystem Admin UI */
 
-const { createApp, ref, reactive, computed, onMounted, watch } = Vue;
+const { createApp, ref, reactive, computed, onMounted, onBeforeUnmount, watch } = Vue;
 
 const API_BASE = '/api';
 
@@ -56,7 +56,7 @@ const app = createApp({
       { label: '用户', value: stats.value.users || 0,    icon: 'fa-users' },
       { label: '域名', value: stats.value.domains || 0,  icon: 'fa-globe' },
       { label: '邮箱', value: stats.value.mailboxes|| 0, icon: 'fa-inbox' },
-      { label: '邮件', value: stats.value.emains || stats.value.emails || 0, icon: 'fa-envelope' },
+      { label: '邮件', value: stats.value.emails || 0, icon: 'fa-envelope' },
       { label: '未读', value: stats.value.unread || 0,   icon: 'fa-envelope-open' },
       { label: 'API 密钥', value: stats.value.api_keys || 0, icon: 'fa-key' },
     ]);
@@ -320,12 +320,30 @@ const app = createApp({
             <option value="user" ${u&&u.role==='user'?'selected':''}>普通用户</option>
             <option value="admin" ${u&&u.role==='admin'?'selected':''}>管理员</option>
           </select></div>
+        <div style="margin-bottom:12px;"><label style="display:block; margin-bottom:4px; font-size:13px;">协议权限</label>
+          <div style="display:flex; gap:15px;">
+            <label><input type="checkbox" id="u-smtp" ${u&&u.smtp_enabled?'checked':''}> SMTP</label>
+            <label><input type="checkbox" id="u-pop3" ${u&&u.pop3_enabled?'checked':''}> POP3</label>
+            <label><input type="checkbox" id="u-imap" ${u&&u.imap_enabled?'checked':''}> IMAP</label>
+          </div>
+        </div>
+        <div style="margin-bottom:12px;"><label style="display:block; margin-bottom:4px; font-size:13px;">发送邮件权限</label>
+          <label><input type="checkbox" id="u-can-send-email" ${u&&u.can_send_email?'checked':''}> 允许发送邮件</label>
+        </div>
+        <div style="margin-bottom:12px;"><label style="display:block; margin-bottom:4px; font-size:13px;">API 访问权限</label>
+          <label><input type="checkbox" id="u-api-access" ${u&&u.api_access?'checked':''}> 允许 API 访问</label>
+        </div>
       `;
       dialog.onOk = async () => {
         if (isEdit) {
           const payload = {
             email: document.getElementById('u-email').value,
             role: document.getElementById('u-role').value,
+            smtp_enabled: document.getElementById('u-smtp').checked ? 1 : 0,
+            pop3_enabled: document.getElementById('u-pop3').checked ? 1 : 0,
+            imap_enabled: document.getElementById('u-imap').checked ? 1 : 0,
+            can_send_email: document.getElementById('u-can-send-email').checked ? 1 : 0,
+            api_access: document.getElementById('u-api-access').checked ? 1 : 0,
           };
           const pwd = document.getElementById('u-pass').value;
           if (pwd) payload.password = pwd;
@@ -336,6 +354,11 @@ const app = createApp({
             email: document.getElementById('u-email').value,
             password: document.getElementById('u-pass').value,
             role: document.getElementById('u-role').value,
+            smtp_enabled: document.getElementById('u-smtp').checked ? 1 : 0,
+            pop3_enabled: document.getElementById('u-pop3').checked ? 1 : 0,
+            imap_enabled: document.getElementById('u-imap').checked ? 1 : 0,
+            can_send_email: document.getElementById('u-can-send-email').checked ? 1 : 0,
+            api_access: document.getElementById('u-api-access').checked ? 1 : 0,
           }) });
         }
         dialog.show = false;
@@ -350,7 +373,155 @@ const app = createApp({
     };
     const loadUsers = async () => { users.value = (await http('/users')).list; };
 
-    // 设置
+    // 用户组管理
+    const userGroups = ref([]);
+    const showUserGroupDialogVisible = ref(false);
+    const userGroupForm = reactive({ id: null, name: '', description: '', permissions: [] });
+
+    const loadUserGroups = async () => {
+      try {
+        const data = await http('/user-groups');
+        userGroups.value = data.list.map(g => ({
+          ...g,
+          permissions: g.permissions ? JSON.parse(g.permissions) : [],
+        }));
+      } catch (e) {
+        ElMessage.error('加载用户组失败: ' + e.message);
+      }
+    };
+
+    const showUserGroupDialog = (group) => {
+      if (group) {
+        userGroupForm.id = group.id;
+        userGroupForm.name = group.name;
+        userGroupForm.description = group.description;
+        userGroupForm.permissions = group.permissions || [];
+      } else {
+        userGroupForm.id = null;
+        userGroupForm.name = '';
+        userGroupForm.description = '';
+        userGroupForm.permissions = [];
+      }
+      showUserGroupDialogVisible.value = true;
+    };
+
+    const saveUserGroup = async () => {
+      if (!userGroupForm.name) {
+        ElMessage.error('用户组名称不能为空');
+        return;
+      }
+      try {
+        const payload = {
+          name: userGroupForm.name,
+          description: userGroupForm.description,
+          permissions: userGroupForm.permissions,
+        };
+        if (userGroupForm.id) {
+          await http('/user-groups/' + userGroupForm.id, { method: 'PUT', body: JSON.stringify(payload) });
+          ElMessage.success('用户组更新成功');
+        } else {
+          await http('/user-groups', { method: 'POST', body: JSON.stringify(payload) });
+          ElMessage.success('用户组添加成功');
+        }
+        showUserGroupDialogVisible.value = false;
+        loadUserGroups();
+      } catch (e) {
+        ElMessage.error('操作失败: ' + e.message);
+      }
+    };
+
+    const deleteUserGroup = async (group) => {
+      try { await ElMessageBox.confirm('确认删除用户组 ' + group.name + '？', '提示', { type: 'warning' }); } catch (e) { return; }
+      try {
+        await http('/user-groups/' + group.id, { method: 'DELETE' });
+        ElMessage.success('用户组已删除');
+        loadUserGroups();
+      } catch (e) {
+        ElMessage.error('删除失败: ' + e.message);
+      }
+    };
+
+    // 卡密管理
+    const membershipCards = ref({ list: [], total: 0 });
+    const membershipCardFilter = reactive({ status: '', card_key: '', user_id: '', limit: 20, page: 1 });
+    const showGenerateCardDialogVisible = ref(false);
+    const generateCardForm = reactive({ count: 1 });
+    const showEditCardDialogVisible = ref(false);
+    const editCardForm = reactive({ id: null, card_key: '', user_id: null, status: 'unused' });
+
+    const loadMembershipCards = async () => {
+      try {
+        const params = new URLSearchParams();
+        if (membershipCardFilter.status) params.append('status', membershipCardFilter.status);
+        if (membershipCardFilter.card_key) params.append('card_key', membershipCardFilter.card_key);
+        if (membershipCardFilter.user_id) params.append('user_id', membershipCardFilter.user_id);
+        params.append('limit', membershipCardFilter.limit);
+        params.append('offset', (membershipCardFilter.page - 1) * membershipCardFilter.limit);
+        const data = await http('/membership-cards?' + params.toString());
+        membershipCards.value = data;
+      } catch (e) {
+        ElMessage.error('加载卡密失败: ' + e.message);
+      }
+    };
+
+    const handleMembershipCardPageChange = (page) => {
+      membershipCardFilter.page = page;
+      loadMembershipCards();
+    };
+
+    const showGenerateCardDialog = () => {
+      generateCardForm.count = 1;
+      showGenerateCardDialogVisible.value = true;
+    };
+
+    const generateMembershipCards = async () => {
+      try {
+        await http('/membership-cards/generate', { method: 'POST', body: JSON.stringify({ count: generateCardForm.count }) });
+        ElMessage.success('卡密生成成功');
+        showGenerateCardDialogVisible.value = false;
+        loadMembershipCards();
+      } catch (e) {
+        ElMessage.error('生成卡密失败: ' + e.message);
+      }
+    };
+
+    const showEditCardDialog = (card) => {
+      editCardForm.id = card.id;
+      editCardForm.card_key = card.card_key;
+      editCardForm.user_id = card.user_id;
+      editCardForm.status = card.status;
+      showEditCardDialogVisible.value = true;
+    };
+
+    const saveMembershipCard = async () => {
+      try {
+        await http('/membership-cards/' + editCardForm.id, {
+          method: 'PUT',
+          body: JSON.stringify({
+            user_id: editCardForm.user_id || null,
+            status: editCardForm.status,
+          }),
+        });
+        ElMessage.success('卡密更新成功');
+        showEditCardDialogVisible.value = false;
+        loadMembershipCards();
+      } catch (e) {
+        ElMessage.error('更新卡密失败: ' + e.message);
+      }
+    };
+
+    const deleteMembershipCard = async (card) => {
+      try { await ElMessageBox.confirm('确认删除卡密 ' + card.card_key + '？', '提示', { type: 'warning' }); } catch (e) { return; }
+      try {
+        await http('/membership-cards/' + card.id, { method: 'DELETE' });
+        ElMessage.success('卡密已删除');
+        loadMembershipCards();
+      } catch (e) {
+        ElMessage.error('删除卡密失败: ' + e.message);
+      }
+    };
+
+    // 系统设置
     const settings = reactive({});
     const settingGroups = ref([]);
     const loadSettings = async () => {
@@ -377,11 +548,54 @@ const app = createApp({
 
     // 日志
     const logs = ref([]);
-    const loadLogs = async () => { logs.value = (await http('/logs?limit=100')).list; };
+    const loadLogs = async () => { logs.value = (await http('/system/logs?limit=100')).list; };
 
     // 系统信息
     const sysInfo = ref({});
     const loadSystemInfo = async () => { sysInfo.value = await http('/system/info'); };
+
+    // 服务器状态
+    const serverStatus = reactive({
+        cpu_usage: 'N/A',
+        mem_total: 'N/A',
+        mem_used: 'N/A',
+        mem_free: 'N/A',
+        mem_percent: 'N/A',
+        disk_total: 'N/A',
+        disk_used: 'N/A',
+        disk_free: 'N/A',
+        disk_percent: 'N/A',
+        load_avg: 'N/A',
+        uptime: 'N/A',
+        os: '',
+        message: '',
+    });
+    const refreshInterval = ref(0); // 刷新间隔，0 为不刷新
+    let refreshTimer = null; // 刷新定时器
+
+    const loadServerStatus = async () => {
+        try {
+            const data = await http('/system/status');
+            Object.assign(serverStatus, data);
+        } catch (e) {
+            console.error('Failed to load server status:', e);
+            ElMessage.error('加载服务器状态失败: ' + e.message);
+        }
+    };
+
+    const startRefreshTimer = () => {
+        stopRefreshTimer();
+        if (refreshInterval.value > 0) {
+            refreshTimer = setInterval(loadServerStatus, refreshInterval.value);
+        }
+    };
+
+    const stopRefreshTimer = () => {
+        if (refreshTimer) {
+            clearInterval(refreshTimer);
+            refreshTimer = null;
+        }
+    };
 
     // 通用
     const dialog = reactive({ show: false, title: '', body: '', onOk: null });
@@ -421,6 +635,8 @@ const app = createApp({
         await loadApiKeys();
         if (user.value.role === 'admin') {
           await loadUsers();
+          await loadUserGroups();
+          await loadMembershipCards();
           await loadSettings();
           await loadLogs();
           await loadSystemInfo();
@@ -444,12 +660,31 @@ const app = createApp({
 
     // 路由切换时加载数据
     watch(page, async (p) => {
-      if (!loggedIn.value) return;
       if (p === 'settings' && user.value.role === 'admin') await loadSettings();
       if (p === 'logs' && user.value.role === 'admin') await loadLogs();
+      if (p === 'user_groups' && user.value.role === 'admin') await loadUserGroups();
+      if (p === 'membership_cards' && user.value.role === 'admin') await loadMembershipCards();
       if (p === 'info') await loadSystemInfo();
       if (p === 'services') await loadServices();
       if (p === 'ports') { await loadPorts(); await loadServices(); }
+      if (p === 'server_status') {
+          await loadServerStatus();
+          startRefreshTimer();
+      } else {
+          stopRefreshTimer();
+      }
+    });
+
+    // 刷新间隔变化时
+    watch(refreshInterval, (newVal) => {
+        if (page.value === 'server_status') {
+            startRefreshTimer();
+        }
+    });
+
+    // 组件卸载前清理定时器
+    onBeforeUnmount(() => {
+        stopRefreshTimer();
     });
 
     return {
@@ -461,9 +696,14 @@ const app = createApp({
       ports, portStatus, showPortDialog, togglePort, deletePort, testPort,
       apiKeys, apiKeyDialog, showApiKeyDialog, deleteApiKey,
       users, showUserDialog, deleteUser,
+      userGroups, showUserGroupDialog, saveUserGroup, deleteUserGroup, showUserGroupDialogVisible, userGroupForm,
+      membershipCards, membershipCardFilter, loadMembershipCards, handleMembershipCardPageChange, showGenerateCardDialog, generateMembershipCards, showEditCardDialog, saveMembershipCard, deleteMembershipCard, showGenerateCardDialogVisible, generateCardForm, showEditCardDialogVisible, editCardForm,
       settings, settingGroups, saveSettings,
       logs,
       sysInfo,
+      serverStatus,
+      refreshInterval,
+      loadServerStatus,
       dialog,
       doLogin, doLogout,
     };

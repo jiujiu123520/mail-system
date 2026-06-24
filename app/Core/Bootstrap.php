@@ -46,20 +46,9 @@ set_error_handler(function (int $errno, string $errstr, string $errfile = '', in
     if (!(error_reporting() & $errno)) {
         return false;
     }
-    // 不终止脚本执行，但确保错误不被直接 echo 到响应
-    // 如果开启 debug，将错误记到日志目录
-    $logDir = dirname(__DIR__) . '/logs';
-    if (is_dir($logDir) && is_writable($logDir)) {
-        $line = sprintf(
-            "[%s] [%s] %s in %s:%d\n",
-            date('Y-m-d H:i:s'),
-            $errno,
-            $errstr,
-            $errfile,
-            $errline
-        );
-        @file_put_contents($logDir . '/php-errors.log', $line, FILE_APPEND);
-    }
+    // 使用 Logger 记录错误
+    $logger = new \MailSystem\Core\Logger();
+    $logger->error(sprintf('PHP Error: %s in %s:%d', $errstr, $errfile, $errline), ['errno' => $errno]);
     return true; // 不继续 PHP 默认处理（防止 HTML 输出）
 });
 

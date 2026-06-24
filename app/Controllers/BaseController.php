@@ -25,7 +25,13 @@ abstract class BaseController
                 'status'      => 1,
             ]);
         } catch (\Throwable $e) {
-            // 静默
+            // 如果日志记录失败，则使用 Logger 记录错误
+            \MailSystem\Core\Logger::error(sprintf('Failed to create log entry: %s', $e->getMessage()), [
+                'action' => $action,
+                'target' => $target,
+                'desc'   => $desc,
+                'error'  => $e->getTraceAsString(),
+            ]);
         }
     }
 

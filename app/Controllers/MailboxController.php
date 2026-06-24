@@ -25,6 +25,7 @@ class MailboxController extends BaseController
                 $m['used_bytes'] = $bytes;
                 $m['used_mb'] = round($bytes / 1024 / 1024, 2);
             } catch (\Throwable $e) {
+                \MailSystem\Core\Logger::warn(sprintf('Failed to calculate usage for mailbox %s: %s', $m['full_address'], $e->getMessage()));
                 $m['used_bytes'] = 0;
                 $m['used_mb'] = 0;
             }
@@ -122,9 +123,18 @@ class MailboxController extends BaseController
         foreach ($items as $i) {
             if ($i === '.' || $i === '..') continue;
             $p = $dir . '/' . $i;
-            if (is_dir($p)) self::rmdirRecursive($p);
-            else @unlink($p);
+            if (is_dir($p)) {
+                self::rmdirRecursive($p);
+            } else {
+                if (!unlink($p)) {
+                    \MailSystem\Core\Logger::error(sprintf('Failed to delete file: %s', $p));
+                }
+            }
         }
-        return @rmdir($dir);
+        if (!rmdir($dir)) {
+            \MailSystem\Core\Logger::error(sprintf('Failed to delete directory: %s', $dir));
+            return false;
+        }
+        return true;
     }
 }

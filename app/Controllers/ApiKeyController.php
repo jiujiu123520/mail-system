@@ -13,7 +13,7 @@ class ApiKeyController extends BaseController
     {
         Auth::requireLogin();
         $u = Auth::user();
-        $all = ($u['role'] === 'admin') && $req->query('all') == '1';
+        $all = ($u['role'] === 'admin') && ((string)$req->query('all') === '1');
         $list = ApiKey::allByUser((int) $u['id'], $all);
         $this->ok(['list' => $list]);
     }
@@ -25,10 +25,13 @@ class ApiKeyController extends BaseController
         $name = trim((string) $req->input('name'));
         $perms = (string) $req->input('permissions', 'read,send');
         $expires = $req->input('expires_at', null);
+        $customSecretKey = (string) $req->input('secret_key', ''); // New: custom secret key
+        $whitelistIps = (array) $req->input('whitelist_ips', []); // New: whitelist IPs
+
         if ($name === '') Response::error('名称不能为空', 400, 400);
 
         $accessKey = 'ak_' . bin2hex(random_bytes(16));
-        $secretKey = bin2hex(random_bytes(32));
+        $secretKey = $customSecretKey ?: bin2hex(random_bytes(32)); // Use custom or generate random
 
         $id = ApiKey::create([
             'user_id'     => (int) $u['id'],
@@ -38,6 +41,7 @@ class ApiKeyController extends BaseController
             'permissions' => $perms,
             'status'      => 1,
             'expires_at'  => $expires ?: null,
+            'whitelist_ips' => json_encode($whitelistIps), // Store as JSON
         ]);
         $this->log('apikey.create', $name);
         // 明文仅此一次返回
@@ -75,8 +79,12 @@ class ApiKeyController extends BaseController
             Response::forbidden('无权操作');
         }
         $data = [];
-        foreach (['name', 'permissions', 'status'] as $f) {
+        foreach (['name', 'permissions', 'status', 'expires_at'] as $f) {
             if ($req->input($f) !== null) $data[$f] = $req->input($f);
+        }
+        // Handle whitelist_ips separately as it's an array
+        if ($req->input('whitelist_ips') !== null) {
+            $data['whitelist_ips'] = json_encode((array) $req->input('whitelist_ips'));
         }
         if (!empty($data)) ApiKey::update($id, $data);
         $this->ok(null, '已更新');

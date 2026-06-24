@@ -1,5 +1,27 @@
 # 更新日志
 
+## [1.1.1] - 2026-06-23
+
+### 修复
+- 修复 `DomainController.php` 中华为云 DNS API 端点拼写错误 (`reord` -> `record`)
+- 修复 `EmailController.php` 和 `PublicApiController.php` 中 Maildir 文件名存储和删除逻辑，新增 `maildir_filename` 字段到 `ms_emails` 表，并更新相关方法以正确处理物理文件删除
+- 修复 `install/install.php` 中安装后说明的脚本引用错误 (`install-services.sh` -> `service.sh start`)
+- 修复 `tests/integration_test.php` 中硬编码的 `$base` 路径
+
+### 改进
+- **增强错误日志记录**：
+  - `app/Core/Bootstrap.php`：集成 `MailSystem\Core\Logger::error()` 处理 PHP 错误
+  - `app/Controllers/BaseController.php`：为 `LogModel::create()` 失败添加错误日志
+  - `app/Controllers/DomainController.php`：为阿里云、腾讯云、华为云 DNS 同步操作添加详细错误日志 (cURL 错误和 API 响应错误)
+  - `app/Controllers/MailboxController.php`：改进邮箱使用量计算和递归目录删除的错误日志记录
+  - `app/Controllers/PortController.php`：改进 `test()` 方法中端口连接和流选择失败的错误日志记录
+  - `app/Controllers/SystemController.php`：改进 `services()` 方法中端口连接检查的错误日志记录，以及 `getServerStatus()` 方法中 `shell_exec` 命令失败和解析问题的错误日志记录
+  - `app/Controllers/PublicApiController.php`：为 API 邮件发送速率限制命中添加警告日志
+- **代码简化与重构**：
+  - `public/api.php`：移除 `WebmailController` 相关路由，将 `UserController::logs()` 路由移动到 `SystemController`，并在 `SystemController.php` 中实现 `logs` 方法，在 `Log.php` 中实现 `count` 方法
+  - `public/admin/assets/app.js`：修复 `statsCards` 中的拼写错误 (`emains` -> `emails`)，并简化 `watch` 逻辑
+  - `scripts/bt-install.sh` 和 `scripts/install-full-auto.sh`：改进 `MAIL_HOSTNAME` 和 `SERVER_NAME` 的处理逻辑
+
 ## [1.1.0] - 2026-06-22
 
 ### 新增

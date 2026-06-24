@@ -235,7 +235,11 @@ class MimeParser
         $name = '';
         $addr = '';
         if (preg_match('/^(.+?)\s*<([^>]+)>\s*$/', $raw, $m)) {
-            $name = self::decodeMime(trim($m[1], " \t\""));
+            $namePart = trim($m[1]);
+            if (str_starts_with($namePart, '"') && str_ends_with($namePart, '"')) {
+                $namePart = trim($namePart, '"'); // Remove only outer quotes
+            }
+            $name = self::decodeMime($namePart);
             $addr = trim($m[2]);
         } else {
             $addr = $raw;

@@ -1,4 +1,7 @@
 <?php
+use PDO;
+use PDOException;
+
 /**
  * CLI 安装脚本 - 一键安装脚本 install.sh 调用
  *

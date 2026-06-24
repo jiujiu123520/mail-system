@@ -3,7 +3,7 @@
 error_reporting(E_ALL);
 ini_set('display_errors', '1');
 
-$base = '/workspace/mail-system';
+$base = dirname(__DIR__);
 chdir($base);
 
 require $base . '/config/helpers.php';

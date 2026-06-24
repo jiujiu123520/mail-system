@@ -271,7 +271,7 @@ table td, table th { padding: 8px 12px; border-bottom: 1px solid #e1e4e8; font-s
                 <li>在「域名管理」中添加你的域名</li>
                 <li>在「邮箱管理」中创建用户邮箱</li>
                 <li>在「端口管理」中确认 SMTP/POP3/IMAP 端口（可自定义）</li>
-                <li>执行 <code>bash scripts/install-services.sh</code> 启动邮件协议服务</li>
+                <li>执行 <code>bash scripts/service.sh start</code> 启动邮件协议服务</li>
                 <li>在域名 DNS 中配置 MX/A/TXT 记录（后台可查询）</li>
             </ol>
             <p style="margin-top:20px;">

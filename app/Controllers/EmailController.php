@@ -22,9 +22,15 @@ class EmailController extends BaseController
         $limit = max(1, min(200, (int) $req->query('limit', 50)));
         $offset = max(0, (int) $req->query('offset', 0));
         $kw = (string) $req->query('keyword', '');
+        $conversation = (bool) $req->query('conversation', false);
 
-        $list = Email::listByMailbox($mailboxId, $folder, $limit, $offset, $kw);
-        $total = Email::countByMailbox($mailboxId, $folder, $kw);
+        if ($conversation) {
+            $list = Email::listConversationsByMailbox($mailboxId, $folder, $limit, $offset, $kw);
+            $total = Email::countConversationsByMailbox($mailboxId, $folder, $kw);
+        } else {
+            $list = Email::listByMailbox($mailboxId, $folder, $limit, $offset, $kw);
+            $total = Email::countByMailbox($mailboxId, $folder, $kw);
+        }
         $this->ok(['list' => $list, 'total' => $total, 'limit' => $limit, 'offset' => $offset]);
     }
 
@@ -40,6 +46,30 @@ class EmailController extends BaseController
         if ($mailbox['user_id'] != $u['id'] && $u['role'] !== 'admin') {
             Response::forbidden('无权访问');
         }
+
+        $conversationView = (bool) $req->query('conversation', false);
+
+        if ($conversationView && !empty($e['conversation_id'])) {
+            $conversationEmails = Email::getConversation($e['conversation_id'], $e['mailbox_id']);
+            // Mark all emails in the conversation as read
+            foreach ($conversationEmails as $convEmail) {
+                if (!$convEmail['is_read']) {
+                    Email::update($convEmail['id'], ['is_read' => 1]);
+                }
+            }
+            // Re-fetch to get updated read status
+            $conversationEmails = Email::getConversation($e['conversation_id'], $e['mailbox_id']);
+
+            // Decode headers for all emails in the conversation
+            foreach ($conversationEmails as &$convEmail) {
+                if (!empty($convEmail['headers'])) {
+                    $convEmail['headers'] = json_decode($convEmail['headers'], true);
+                }
+            }
+            $this->ok(['conversation' => $conversationEmails]);
+            return;
+        }
+
         // 标记已读
         if (!$e['is_read']) {
             Email::update($id, ['is_read' => 1]);
@@ -55,6 +85,45 @@ class EmailController extends BaseController
     public function send(Request $req): void
     {
         Auth::requireLogin();
+
+        // --- 邮件发送速率限制 ---
+        $u = Auth::user(); // Get user once
+        $userId = $u['id'];
+
+        // --- 邮件发送速率限制 ---
+        $rateLimit = config('mail.rate_limit_per_second', 10);
+        $sessionKey = 'email_send_rate_limit_' . $userId;
+
+        if (!isset($_SESSION[$sessionKey])) {
+            $_SESSION[$sessionKey] = ['last_send_time' => 0, 'send_count_in_second' => 0];
+        }
+
+        $currentTime = microtime(true);
+        $lastSendTime = $_SESSION[$sessionKey]['last_send_time'];
+        $sendCount = $_SESSION[$sessionKey]['send_count_in_second'];
+
+        if (($currentTime - $lastSendTime) < 1) { // 在同一秒内
+            if ($sendCount >= $rateLimit) {
+                Response::error('邮件发送频率过高，请稍后再试', 429, 429);
+            }
+            $_SESSION[$sessionKey]['send_count_in_second']++;
+        } else { // 新的一秒
+            $_SESSION[$sessionKey]['last_send_time'] = $currentTime;
+            $_SESSION[$sessionKey]['send_count_in_second'] = 1;
+        }
+        // --- 邮件发送速率限制结束 ---
+
+        // --- 邮件发送权限检查 ---
+        if (isset($u['can_send_email']) && $u['can_send_email'] === 0) {
+            Response::error('您没有发送邮件的权限 (个人设置)', 403, 403);
+        }
+
+        $userPermissions = \MailSystem\Models\User::getPermissions($userId);
+        if (isset($userPermissions['send_email']) && $userPermissions['send_email'] === false) {
+            Response::error('您没有发送邮件的权限 (用户组设置)', 403, 403);
+        }
+        // --- 邮件发送权限检查结束 ---
+
         $fromMailboxId = (int) $req->input('from_mailbox_id');
         $to = (array) $req->input('to', []);
         $cc = (array) $req->input('cc', []);
@@ -62,6 +131,8 @@ class EmailController extends BaseController
         $subject = (string) $req->input('subject', '');
         $bodyText = (string) $req->input('body_text', '');
         $bodyHtml = (string) $req->input('body_html', '');
+        $inReplyTo = (string) $req->input('in_reply_to', ''); // For conversation threading
+        $references = (string) $req->input('references', ''); // For conversation threading
 
         if (empty($to)) Response::error('收件人不能为空', 400, 400);
         $m = Mailbox::find($fromMailboxId);
@@ -74,6 +145,14 @@ class EmailController extends BaseController
         }
 
         $from = ['name' => $m['display_name'] ?: $m['local_part'], 'address' => $m['full_address']];
+        $headers = ['hostname' => config('mail.hostname', 'localhost')];
+        if (!empty($inReplyTo)) {
+            $headers['In-Reply-To'] = $inReplyTo;
+        }
+        if (!empty($references)) {
+            $headers['References'] = $references;
+        }
+
         $raw = MimeParser::build([
             'from'     => $from,
             'to'       => $to,
@@ -82,23 +161,47 @@ class EmailController extends BaseController
             'subject'  => $subject,
             'body_text'=> $bodyText,
             'body_html'=> $bodyHtml,
-            'headers'  => ['hostname' => config('mail.hostname', 'localhost')],
+            'headers'  => $headers,
         ]);
 
+        // Extract Message-ID from raw email
+        $messageId = '';
+        if (preg_match('/^Message-ID:\s*<?([^>\s]+)/mi', $raw, $mm)) $messageId = $mm[1];
+
+        // Determine conversation_id
+        $conversationId = $messageId; // Default to current message ID
+        if (!empty($inReplyTo)) {
+            // Use In-Reply-To as conversation ID if present
+            if (preg_match('/<?([^>\s]+)>/', $inReplyTo, $m_irt)) {
+                $conversationId = $m_irt[1];
+            } else {
+                $conversationId = $inReplyTo;
+            }
+        } elseif (!empty($references)) {
+            // If In-Reply-To is not present, try References
+            $refs = explode(' ', $references);
+            if (!empty($refs)) {
+                if (preg_match('/<?([^>\s]+)>/', end($refs), $m_ref)) {
+                    $conversationId = $m_ref[1];
+                } else {
+                    $conversationId = end($refs);
+                }
+            }
+        }
+
         // 投递到 SENT
+        $maildirFilename = '';
         try {
             $storage = new MailStorage($m['full_address']);
-            $storage->append($raw, 'SENT');
+            $maildirFilename = $storage->append($raw, 'SENT');
         } catch (\Throwable $e) {
             Response::error('写入发件箱失败: ' . $e->getMessage(), 500, 500);
         }
 
-        $messageId = '';
-        if (preg_match('/^Message-ID:\s*<?([^>\s]+)/mi', $raw, $mm)) $messageId = $mm[1];
-
         $emailId = Email::create([
             'mailbox_id'   => $m['id'],
             'message_id'   => $messageId,
+            'conversation_id' => $conversationId, // Add conversation_id
             'from_address' => $m['full_address'],
             'from_name'    => $from['name'],
             'to_addresses' => implode(', ', array_map(fn($a) => is_array($a) ? $a['address'] : $a, $to)),
@@ -111,6 +214,7 @@ class EmailController extends BaseController
             'folder'       => 'SENT',
             'direction'    => 'out',
             'status'       => 'sent',
+            'maildir_filename' => $maildirFilename,
         ]);
 
         // 投递给收件人
@@ -118,13 +222,17 @@ class EmailController extends BaseController
         foreach (array_merge($to, $cc, $bcc) as $addr) {
             $target = is_array($addr) ? $addr['address'] : $addr;
             $t = Mailbox::findByAddress($target);
-            if (!$t) { $fail[] = $target; continue; }
+            if (!$t) {
+                $fail[] = ['address' => $target, 'reason' => '收件人邮箱不存在'];
+                continue;
+            }
             try {
                 $st = new MailStorage($t['full_address']);
                 $st->deliver($raw);
                 Email::create([
                     'mailbox_id'   => $t['id'],
                     'message_id'   => $messageId,
+                    'conversation_id' => $conversationId, // Add conversation_id
                     'from_address' => $m['full_address'],
                     'from_name'    => $from['name'],
                     'to_addresses' => $target,
@@ -137,12 +245,12 @@ class EmailController extends BaseController
                     'status'       => 'received',
                 ]);
             } catch (\Throwable $e) {
-                $fail[] = $target;
+                $fail[] = ['address' => $target, 'reason' => $e->getMessage()];
             }
         }
 
         $this->log('email.send', $m['full_address'], $subject);
-        $this->ok(['id' => $emailId, 'failed' => $fail], $fail ? '已发送（部分收件人不存在）' : '发送成功');
+        $this->ok(['id' => $emailId, 'failed' => $fail], $fail ? '已发送（部分收件人投递失败）' : '发送成功');
     }
 
     public function delete(Request $req, array $params): void
@@ -161,12 +269,24 @@ class EmailController extends BaseController
         if ($permanent) {
             Email::delete($id);
             // 删除文件
-            if ($m) {
+            if ($m && !empty($e['maildir_filename'])) {
                 $storage = new MailStorage($m['full_address']);
-                $files = $storage->listFolder($e['folder']);
-                foreach ($files as $f) {
-                    if (strpos($f['filename'], substr(md5($e['message_id'] ?: ''), 0, 8)) !== false) {
-                        $storage->delete($f['path']);
+                $folderPath = $storage->path() . '/' . ($e['folder'] === 'INBOX' ? 'new' : '.' . $e['folder'] . '/new');
+                $filePath = $folderPath . '/' . $e['maildir_filename'];
+                if (file_exists($filePath)) {
+                    if (!$storage->delete($filePath)) {
+                        \MailSystem\Core\Logger::error(sprintf('Failed to delete maildir file %s for email ID %d', $filePath, $id));
+                    }
+                } else {
+                    // 尝试在 cur 目录查找并删除
+                    $folderPath = $storage->path() . '/' . ($e['folder'] === 'INBOX' ? 'cur' : '.' . $e['folder'] . '/cur');
+                    $filePath = $folderPath . '/' . $e['maildir_filename'] . ':2,S'; // Maildir 邮件在 cur 目录会有 flags
+                    if (file_exists($filePath)) {
+                        if (!$storage->delete($filePath)) {
+                            \MailSystem\Core\Logger::error(sprintf('Failed to delete maildir file %s (cur) for email ID %d', $filePath, $id));
+                        }
+                    } else {
+                        \MailSystem\Core\Logger::warn(sprintf('Maildir file %s not found for email ID %d', $e['maildir_filename'], $id));
                     }
                 }
             }

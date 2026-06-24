@@ -8,11 +8,13 @@ class ApiKey
 {
     public static function find(int $id): ?array
     {
-        return Database::getInstance()->fetchOne('SELECT * FROM ms_api_keys WHERE id = ?', [$id]);
+        $key = Database::getInstance()->fetchOne('SELECT * FROM ms_api_keys WHERE id = ?', [$id]);
+        return self::hydrateApiKey($key);
     }
     public static function findByAccessKey(string $key): ?array
     {
-        return Database::getInstance()->fetchOne('SELECT * FROM ms_api_keys WHERE access_key = ?', [$key]);
+        $key = Database::getInstance()->fetchOne('SELECT * FROM ms_api_keys WHERE access_key = ?', [$key]);
+        return self::hydrateApiKey($key);
     }
     public static function allByUser(int $userId, bool $all = false): array
     {
@@ -23,7 +25,11 @@ class ApiKey
             $params[] = $userId;
         }
         $sql .= ' ORDER BY id DESC';
-        return Database::getInstance()->fetchAll($sql, $params);
+        $list = Database::getInstance()->fetchAll($sql, $params);
+        foreach ($list as &$key) {
+            $key = self::hydrateApiKey($key);
+        }
+        return $list;
     }
     public static function create(array $data): int
     {
@@ -36,5 +42,13 @@ class ApiKey
     public static function delete(int $id): int
     {
         return Database::getInstance()->delete('ms_api_keys', 'id = :id', ['id' => $id]);
+    }
+
+    private static function hydrateApiKey(?array $key): ?array
+    {
+        if ($key && !empty($key['whitelist_ips'])) {
+            $key['whitelist_ips'] = json_decode($key['whitelist_ips'], true);
+        }
+        return $key;
     }
 }

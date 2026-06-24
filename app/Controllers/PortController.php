@@ -112,6 +112,7 @@ class PortController extends BaseController
         $errno = 0; $errstr = '';
         $sock = @stream_socket_client("tcp://{$bindIp}:{$p['port']}", $errno, $errstr, 3);
         if (!$sock) {
+            \MailSystem\Core\Logger::error(sprintf('Port test connection failed for %s:%d: %s (%d)', $bindIp, $p['port'], $errstr, $errno));
             $this->ok(['success' => false, 'message' => "连接失败: $errstr ($errno)"]);
             return;
         }
@@ -121,10 +122,14 @@ class PortController extends BaseController
         $start = microtime(true);
         while (microtime(true) - $start < 3) {
             $r = [$sock]; $w = null; $e = null;
-            if (@stream_select($r, $w, $e, 2) > 0) {
+            $selectResult = @stream_select($r, $w, $e, 2);
+            if ($selectResult === false) {
+                \MailSystem\Core\Logger::error(sprintf('Port test stream_select failed for %s:%d', $bindIp, $p['port']));
+                break;
+            } elseif ($selectResult > 0) {
                 $data = fread($sock, 1024);
                 if ($data) { $banner = $data; break; }
-            } else break;
+            }
         }
         fclose($sock);
         $this->ok(['success' => true, 'banner' => trim($banner), 'port' => $p['port'], 'service' => $p['service']]);

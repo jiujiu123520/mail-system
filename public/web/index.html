@@ -40,6 +40,13 @@ body { font-family: -apple-system, "Segoe UI", "PingFang SC", sans-serif; backgr
 .viewer .body { flex: 1; padding: 20px 24px; overflow-y: auto; line-height: 1.7; }
 .viewer .body pre { white-space: pre-wrap; font-family: inherit; }
 
+.conversation-viewer { padding: 10px; }
+.conversation-item { border: 1px solid #e0e0e0; border-radius: 8px; margin-bottom: 10px; background: #fff; }
+.conversation-item .header { padding: 12px 16px; border-bottom: 1px solid #f0f0f0; }
+.conversation-item .header .subject { font-size: 16px; margin-bottom: 5px; }
+.conversation-item .header .meta { font-size: 12px; color: #888; }
+.conversation-item .body { padding: 12px 16px; }
+
 .empty-viewer { flex: 1; display: flex; align-items: center; justify-content: center; color: #bdc3c7; font-size: 16px; }
 .empty-viewer i { font-size: 80px; margin-bottom: 20px; display: block; }
 
@@ -70,6 +77,7 @@ body { font-family: -apple-system, "Segoe UI", "PingFang SC", sans-serif; backgr
   .viewer.show-mobile { display: flex; }
 }
 </style>
+<script src="https://cdn.tiny.cloud/1/no-api-key/tinymce/6/tinymce.min.js" referrerpolicy="origin"></script>
 </head>
 <body>
 <div id="app">
@@ -92,6 +100,9 @@ body { font-family: -apple-system, "Segoe UI", "PingFang SC", sans-serif; backgr
       <input v-model="registerForm.username" placeholder="用户名 (3-32位字母数字下划线)">
       <input v-model="registerForm.password" type="password" placeholder="密码 (至少6位)">
       <input v-model="registerForm.email" placeholder="邮箱 (可选)">
+      <el-select v-model="registerForm.domain" placeholder="选择邮箱域名" style="width:100%; margin-bottom:12px;">
+        <el-option v-for="domain in allowedRegistrationDomains" :key="domain" :label="domain" :value="domain"></el-option>
+      </el-select>
       <div v-if="requireCaptcha" style="display:flex; gap:8px; margin-bottom:12px;">
         <input v-model="registerForm.captcha_code" placeholder="验证码" style="flex:1;" @keyup.enter="doRegister">
         <img v-if="registerForm.captcha_svg" :src="'data:image/svg+xml;base64,' + btoa(registerForm.captcha_svg)" @click="loadCaptcha" style="cursor:pointer; height:36px; border-radius:4px;" title="点击刷新">
@@ -112,6 +123,8 @@ body { font-family: -apple-system, "Segoe UI", "PingFang SC", sans-serif; backgr
       <div style="border-top:1px solid rgba(255,255,255,0.1); margin-top:16px; padding-top:16px;">
         <div class="folder" @click="compose"><i class="fa fa-pencil"></i> 写邮件</div>
         <div class="folder" @click="doLogout"><i class="fa fa-sign-out"></i> 退出</div>
+        <div class="folder" @click="showApiKeyManager=true"><i class="fa fa-key"></i> API 密钥</div>
+        <div class="folder" @click="showChangePasswordDialog=true"><i class="fa fa-lock"></i> 修改密码</div>
       </div>
     </aside>
     <div class="list">
@@ -135,22 +148,53 @@ body { font-family: -apple-system, "Segoe UI", "PingFang SC", sans-serif; backgr
           <div class="preview">{{ e.body_text || '(无内容预览)' }}</div>
         </div>
       </div>
+      <div class="pagination" style="padding:10px; text-align:center;">
+        <el-pagination
+          background
+          layout="prev, pager, next"
+          :total="emails.total"
+          :page-size="pageSize"
+          :current-page="currentPage"
+          @current-change="handlePageChange">
+        </el-pagination>
+      </div>
     </div>
     <div v-if="current" class="viewer">
-      <div class="header">
-        <div class="actions">
-          <button class="btn" @click="deleteEmail(current)"><i class="fa fa-trash"></i> 删除</button>
+      <div v-if="!isConversationView">
+        <div class="header">
+          <div class="actions">
+            <button class="btn" @click="deleteEmail(current)"><i class="fa fa-trash"></i> 删除</button>
+          </div>
+          <h2 class="subject">{{ current.subject || '(无主题)' }}</h2>
+          <div class="meta">
+            <div><strong>发件人：</strong>{{ current.from_name }} &lt;{{ current.from_address }}&gt;</div>
+            <div><strong>收件人：</strong>{{ current.to_addresses }}</div>
+            <div><strong>时间：</strong>{{ current.created_at }}</div>
+          </div>
         </div>
-        <h2 class="subject">{{ current.subject || '(无主题)' }}</h2>
-        <div class="meta">
-          <div><strong>发件人：</strong>{{ current.from_name }} &lt;{{ current.from_address }}&gt;</div>
-          <div><strong>收件人：</strong>{{ current.to_addresses }}</div>
-          <div><strong>时间：</strong>{{ current.created_at }}</div>
+        <div class="body">
+          <div v-if="current.body_html" v-html="current.body_html"></div>
+          <pre v-else>{{ current.body_text }}</pre>
         </div>
       </div>
-      <div class="body">
-        <div v-if="current.body_html" v-html="current.body_html"></div>
-        <pre v-else>{{ current.body_text }}</pre>
+      <div v-else class="conversation-viewer">
+        <div v-for="(email, index) in current" :key="email.id" class="conversation-item">
+          <div class="header">
+            <div class="actions">
+              <button class="btn" @click="deleteEmail(email)"><i class="fa fa-trash"></i> 删除</button>
+            </div>
+            <h2 class="subject">{{ email.subject || '(无主题)' }}</h2>
+            <div class="meta">
+              <div><strong>发件人：</strong>{{ email.from_name }} &lt;{{ email.from_address }}&gt;</div>
+              <div><strong>收件人：</strong>{{ email.to_addresses }}</div>
+              <div><strong>时间：</strong>{{ email.created_at }}</div>
+            </div>
+          </div>
+          <div class="body">
+            <div v-if="email.body_html" v-html="email.body_html"></div>
+            <pre v-else>{{ email.body_text }}</pre>
+          </div>
+        </div>
       </div>
     </div>
     <div v-else class="empty-viewer">
@@ -160,6 +204,94 @@ body { font-family: -apple-system, "Segoe UI", "PingFang SC", sans-serif; backgr
       </div>
     </div>
   </div>
+
+  <!-- API 密钥管理 -->
+  <div v-if="showApiKeyManager" class="composer" style="width:600px; height:auto; bottom:auto; top:50%; left:50%; transform:translate(-50%,-50%);">
+    <div class="head">
+      <span>API 密钥管理</span>
+      <a href="javascript:;" @click="showApiKeyManager=false" style="color:#fff;">×</a>
+    </div>
+    <div class="body" style="padding:16px;">
+      <el-table :data="apiKeys" style="width:100%; margin-bottom:20px;">
+        <el-table-column prop="name" label="名称"></el-table-column>
+        <el-table-column prop="access_key" label="Access Key"></el-table-column>
+        <el-table-column label="操作" width="180">
+          <template #default="scope">
+            <el-button size="small" @click="editApiKey(scope.row)">编辑</el-button>
+            <el-button size="small" type="danger" @click="deleteApiKey(scope.row)">删除</el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+
+      <h3>生成新密钥</h3>
+      <el-form :model="newApiKeyForm" label-width="100px">
+        <el-form-item label="名称">
+          <el-input v-model="newApiKeyForm.name"></el-input>
+        </el-form-item>
+        <el-form-item label="自定义 Secret">
+          <el-input v-model="newApiKeyForm.secret_key" placeholder="留空则自动生成"></el-input>
+        </el-form-item>
+        <el-form-item label="过期时间">
+          <el-date-picker v-model="newApiKeyForm.expires_at" type="datetime" placeholder="留空则永不过期"></el-date-picker>
+        </el-form-item>
+        <el-form-item label="IP 白名单">
+          <el-select v-model="newApiKeyForm.whitelist_ips" multiple filterable allow-create default-first-option placeholder="输入IP地址，回车添加">
+            <el-option v-for="item in newApiKeyForm.whitelist_ips" :key="item" :label="item" :value="item"></el-option>
+          </el-select>
+        </el-form-item>
+        <el-form-item>
+          <el-button type="primary" @click="generateApiKey">生成</el-button>
+        </el-form-item>
+      </el-form>
+    </div>
+  </div>
+  <div v-if="showApiKeyManager" style="position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:99;" @click="showApiKeyManager=false"></div>
+
+  <!-- 编辑密钥弹窗 -->
+  <el-dialog v-model="showEditApiKeyDialog" title="编辑 API 密钥" width="500px">
+    <el-form :model="editApiKeyForm" label-width="100px">
+      <el-form-item label="名称">
+        <el-input v-model="editApiKeyForm.name" disabled></el-input>
+      </el-form-item>
+      <el-form-item label="Access Key">
+        <el-input v-model="editApiKeyForm.access_key" disabled></el-input>
+      </el-form-item>
+      <el-form-item label="Secret Key">
+        <el-input v-model="editApiKeyForm.secret_key" type="password" show-password disabled></el-input>
+      </el-form-item>
+      <el-form-item label="过期时间">
+        <el-date-picker v-model="editApiKeyForm.expires_at" type="datetime" placeholder="留空则永不过期"></el-date-picker>
+      </el-form-item>
+      <el-form-item label="IP 白名单">
+        <el-select v-model="editApiKeyForm.whitelist_ips" multiple filterable allow-create default-first-option placeholder="输入IP地址，回车添加">
+          <el-option v-for="item in editApiKeyForm.whitelist_ips" :key="item" :label="item" :value="item"></el-option>
+        </el-select>
+      </el-form-item>
+    </el-form>
+    <template #footer>
+      <el-button @click="showEditApiKeyDialog = false">取消</el-button>
+      <el-button type="primary" @click="updateApiKey">保存</el-button>
+    </template>
+  </el-dialog>
+
+  <!-- 修改密码弹窗 -->
+  <el-dialog v-model="showChangePasswordDialog" title="修改密码" width="400px">
+    <el-form :model="changePasswordForm" label-width="80px">
+      <el-form-item label="旧密码">
+        <el-input v-model="changePasswordForm.old_password" type="password" show-password></el-input>
+      </el-form-item>
+      <el-form-item label="新密码">
+        <el-input v-model="changePasswordForm.new_password" type="password" show-password></el-input>
+      </el-form-item>
+      <el-form-item label="确认新密码">
+        <el-input v-model="changePasswordForm.confirm_password" type="password" show-password></el-input>
+      </el-form-item>
+    </el-form>
+    <template #footer>
+      <el-button @click="showChangePasswordDialog = false">取消</el-button>
+      <el-button type="primary" @click="doChangePassword">保存</el-button>
+    </template>
+  </el-dialog>
 
   <!-- 写邮件 -->
   <div v-if="composer.show" class="composer">
@@ -171,7 +303,7 @@ body { font-family: -apple-system, "Segoe UI", "PingFang SC", sans-serif; backgr
       <input :value="user.full_address" readonly>
       <input v-model="composer.to" placeholder="收件人 (多个用逗号分隔)">
       <input v-model="composer.subject" placeholder="主题">
-      <textarea v-model="composer.body" placeholder="邮件正文..."></textarea>
+      <div id="tinymce-editor"></div>
     </div>
     <div class="foot">
       <button class="btn" @click="composer.show=false">取消</button>

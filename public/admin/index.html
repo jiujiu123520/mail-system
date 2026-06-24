@@ -137,8 +137,11 @@ tr:hover td { background: #fafbfc; }
         <li :class="{active: page==='ports'}" @click="page='ports'"><i class="fa fa-plug"></i> 端口管理</li>
         <li :class="{active: page==='services'}" @click="page='services'"><i class="fa fa-cogs"></i> 服务状态</li>
         <li class="group">系统</li>
+        <li :class="{active: page==='server_status'}" @click="page='server_status'"><i class="fa fa-server"></i> 服务器状态</li>
         <li :class="{active: page==='apikeys'}" @click="page='apikeys'"><i class="fa fa-key"></i> API 密钥</li>
         <li v-if="user.role==='admin'" :class="{active: page==='users'}" @click="page='users'"><i class="fa fa-users"></i> 用户管理</li>
+        <li v-if="user.role==='admin'" :class="{active: page==='user_groups'}" @click="page='user_groups'"><i class="fa fa-users"></i> 用户组管理</li>
+        <li v-if="user.role==='admin'" :class="{active: page==='membership_cards'}" @click="page='membership_cards'"><i class="fa fa-credit-card"></i> 卡密管理</li>
         <li v-if="user.role==='admin'" :class="{active: page==='settings'}" @click="page='settings'"><i class="fa fa-cog"></i> 系统设置</li>
         <li v-if="user.role==='admin'" :class="{active: page==='logs'}" @click="page='logs'"><i class="fa fa-list-alt"></i> 操作日志</li>
         <li :class="{active: page==='info'}" @click="page='info'"><i class="fa fa-info-circle"></i> 系统信息</li>
@@ -421,6 +424,83 @@ tr:hover td { background: #fafbfc; }
           </div>
         </div>
 
+        <!-- 用户组管理 -->
+        <div :class="['page', {active: page==='user_groups'}]" v-if="user.role==='admin'">
+          <div class="card">
+            <div class="card-title">
+              <span>用户组列表 <span class="text-muted text-sm">共 {{ userGroups.length }} 个</span></span>
+              <div class="actions">
+                <button class="btn btn-primary" @click="showUserGroupDialog()"><i class="fa fa-plus"></i> 添加用户组</button>
+              </div>
+            </div>
+            <table v-if="userGroups.length">
+              <thead><tr><th>ID</th><th>名称</th><th>描述</th><th>权限</th><th>创建时间</th><th>操作</th></tr></thead>
+              <tbody>
+                <tr v-for="g in userGroups" :key="g.id">
+                  <td>{{ g.id }}</td>
+                  <td><strong>{{ g.name }}</strong></td>
+                  <td>{{ g.description || '-' }}</td>
+                  <td><span class="tag tag-blue">{{ g.permissions ? Object.keys(g.permissions).join(', ') : '无' }}</span></td>
+                  <td class="text-muted text-sm">{{ g.created_at }}</td>
+                  <td>
+                    <button class="btn btn-sm" @click="showUserGroupDialog(g)">编辑</button>
+                    <button class="btn btn-sm btn-danger" @click="deleteUserGroup(g)">删除</button>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+            <div v-else class="empty"><i class="fa fa-users"></i><p>暂无用户组</p></div>
+          </div>
+        </div>
+
+        <!-- 卡密管理 -->
+        <div :class="['page', {active: page==='membership_cards'}]" v-if="user.role==='admin'">
+          <div class="card">
+            <div class="card-title">
+              <span>卡密列表 <span class="text-muted text-sm">共 {{ membershipCards.total }} 张</span></span>
+              <div class="actions">
+                <el-select v-model="membershipCardFilter.status" placeholder="状态" size="small" style="width: 100px; margin-right: 8px;">
+                  <el-option label="全部" value=""></el-option>
+                  <el-option label="未使用" value="unused"></el-option>
+                  <el-option label="已使用" value="used"></el-option>
+                </el-select>
+                <el-input v-model="membershipCardFilter.card_key" placeholder="卡密" size="small" style="width: 120px; margin-right: 8px;"></el-input>
+                <el-input v-model="membershipCardFilter.user_id" placeholder="用户ID" size="small" style="width: 100px; margin-right: 8px;"></el-input>
+                <button class="btn" @click="loadMembershipCards"><i class="fa fa-search"></i> 搜索</button>
+                <button class="btn btn-primary" @click="showGenerateCardDialog()"><i class="fa fa-plus"></i> 生成卡密</button>
+              </div>
+            </div>
+            <table v-if="membershipCards.list.length">
+              <thead><tr><th>ID</th><th>卡密</th><th>绑定用户ID</th><th>状态</th><th>生成时间</th><th>使用时间</th><th>操作</th></tr></thead>
+              <tbody>
+                <tr v-for="c in membershipCards.list" :key="c.id">
+                  <td>{{ c.id }}</td>
+                  <td><strong>{{ c.card_key }}</strong></td>
+                  <td>{{ c.user_id || '-' }}</td>
+                  <td><span :class="['tag', c.status==='unused'?'tag-green':'tag-red']">{{ c.status==='unused'?'未使用':'已使用' }}</span></td>
+                  <td class="text-muted text-sm">{{ c.generated_at }}</td>
+                  <td class="text-muted text-sm">{{ c.used_at || '-' }}</td>
+                  <td>
+                    <button class="btn btn-sm" @click="showEditCardDialog(c)">编辑</button>
+                    <button class="btn btn-sm btn-danger" @click="deleteMembershipCard(c)">删除</button>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+            <div v-else class="empty"><i class="fa fa-credit-card"></i><p>暂无卡密</p></div>
+            <div style="margin-top:16px; text-align:right;">
+              <el-pagination
+                background
+                layout="prev, pager, next"
+                :total="membershipCards.total"
+                :page-size="membershipCardFilter.limit"
+                :current-page="membershipCardFilter.page"
+                @current-change="handleMembershipCardPageChange">
+              </el-pagination>
+            </div>
+          </div>
+        </div>
+
         <!-- 系统设置 -->
         <div :class="['page', {active: page==='settings'}]" v-if="user.role==='admin'">
           <div class="card">
@@ -478,9 +558,118 @@ tr:hover td { background: #fafbfc; }
             </table>
           </div>
         </div>
+
+        <!-- 服务器状态 -->
+        <div :class="['page', {active: page==='server_status'}]">
+          <div class="card">
+            <div class="card-title">
+              <span>服务器状态</span>
+              <div class="actions">
+                <el-select v-model="refreshInterval" placeholder="刷新间隔" size="small" style="width: 120px; margin-right: 8px;">
+                  <el-option label="不刷新" :value="0"></el-option>
+                  <el-option label="1 秒" :value="1000"></el-option>
+                  <el-option label="3 秒" :value="3000"></el-option>
+                  <el-option label="5 秒" :value="5000"></el-option>
+                  <el-option label="10 秒" :value="10000"></el-option>
+                  <el-option label="30 秒" :value="30000"></el-option>
+                </el-select>
+                <button class="btn" @click="loadServerStatus"><i class="fa fa-refresh"></i> 立即刷新</button>
+              </div>
+            </div>
+            <div class="stats-grid">
+              <div class="stat-card">
+                <div class="label">CPU 使用率</div>
+                <div class="value">{{ serverStatus.cpu_usage }}%</div>
+                <i class="fa fa-microchip icon"></i>
+              </div>
+              <div class="stat-card">
+                <div class="label">内存使用</div>
+                <div class="value">{{ serverStatus.mem_percent }}%</div>
+                <i class="fa fa-memory icon"></i>
+              </div>
+              <div class="stat-card">
+                <div class="label">磁盘使用</div>
+                <div class="value">{{ serverStatus.disk_percent }}%</div>
+                <i class="fa fa-hdd-o icon"></i>
+              </div>
+              <div class="stat-card">
+                <div class="label">系统负载</div>
+                <div class="value">{{ serverStatus.load_avg }}</div>
+                <i class="fa fa-tasks icon"></i>
+              </div>
+              <div class="stat-card">
+                <div class="label">运行时间</div>
+                <div class="value">{{ serverStatus.uptime }}</div>
+                <i class="fa fa-clock-o icon"></i>
+              </div>
+            </div>
+            <div v-if="serverStatus.os === 'Windows'" class="empty" style="padding:20px 0; color:#f5222d;">
+              <i class="fa fa-exclamation-triangle"></i>
+              <p style="margin-top:10px;">当前系统为 Windows，服务器状态监控功能仅支持 Linux 系统。</p>
+            </div>
+          </div>
+        </div>
       </section>
     </main>
   </div>
+
+  <!-- 用户组编辑对话框 -->
+  <el-dialog v-model="showUserGroupDialogVisible" :title="userGroupForm.id ? '编辑用户组' : '添加用户组'" width="500px">
+    <el-form :model="userGroupForm" label-width="100px">
+      <el-form-item label="名称">
+        <el-input v-model="userGroupForm.name"></el-input>
+      </el-form-item>
+      <el-form-item label="描述">
+        <el-input v-model="userGroupForm.description" type="textarea"></el-input>
+      </el-form-item>
+      <el-form-item label="权限">
+        <el-checkbox-group v-model="userGroupForm.permissions">
+          <el-checkbox label="send_email">发送邮件</el-checkbox>
+          <el-checkbox label="api_access">API 访问</el-checkbox>
+          <!-- 更多权限可以按需添加 -->
+        </el-checkbox-group>
+      </el-form-item>
+    </el-form>
+    <template #footer>
+      <el-button @click="showUserGroupDialogVisible = false">取消</el-button>
+      <el-button type="primary" @click="saveUserGroup">保存</el-button>
+    </template>
+  </el-dialog>
+
+  <!-- 生成卡密对话框 -->
+  <el-dialog v-model="showGenerateCardDialogVisible" title="生成卡密" width="400px">
+    <el-form :model="generateCardForm" label-width="80px">
+      <el-form-item label="数量">
+        <el-input-number v-model="generateCardForm.count" :min="1" :max="100"></el-input-number>
+      </el-form-item>
+    </el-form>
+    <template #footer>
+      <el-button @click="showGenerateCardDialogVisible = false">取消</el-button>
+      <el-button type="primary" @click="generateMembershipCards">生成</el-button>
+    </template>
+  </el-dialog>
+
+  <!-- 编辑卡密对话框 -->
+  <el-dialog v-model="showEditCardDialogVisible" title="编辑卡密" width="500px">
+    <el-form :model="editCardForm" label-width="100px">
+      <el-form-item label="卡密">
+        <el-input v-model="editCardForm.card_key" disabled></el-input>
+      </el-form-item>
+      <el-form-item label="绑定用户ID">
+        <el-input v-model="editCardForm.user_id" type="number" placeholder="留空则不绑定"></el-input>
+      </el-form-item>
+      <el-form-item label="状态">
+        <el-select v-model="editCardForm.status">
+          <el-option label="未使用" value="unused"></el-option>
+          <el-option label="已使用" value="used"></el-option>
+        </el-select>
+      </el-form-item>
+    </el-form>
+    <template #footer>
+      <el-button @click="showEditCardDialogVisible = false">取消</el-button>
+      <el-button type="primary" @click="saveMembershipCard">保存</el-button>
+    </template>
+  </el-dialog>
 
   <!-- 通用对话框 (简易实现) -->
   <div v-if="dialog.show" @click.self="dialog.show=false" style="position:fixed; inset:0; background:rgba(0,0,0,0.4); display:flex; align-items:center; justify-content:center; z-index:1000;">

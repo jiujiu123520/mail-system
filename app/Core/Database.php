@@ -33,12 +33,20 @@ class Database
         return self::$instance;
     }
 
+    /**
+     * 创建一个新的 Database 实例，并覆盖现有的单例实例。
+     * 主要用于测试或需要强制重新连接的场景。
+     */
     public static function make(array $config): Database
     {
         self::$instance = new self($config);
         return self::$instance;
     }
 
+    /**
+     * 重置单例实例，强制下次调用 getInstance() 时创建新的数据库连接。
+     * 主要用于测试或需要强制重新连接的场景。
+     */
     public static function reset(): void
     {
         self::$instance = null;
@@ -129,6 +137,18 @@ class Database
         return (int) $this->pdo->lastInsertId();
     }
 
+    /**
+     * 更新数据表中的记录。
+     *
+     * @param string $table 表名
+     * @param array $data 要更新的键值对数据
+     * @param string $where WHERE 子句 (例如 "id = :id" 或 "status = 1")
+     *                      警告：请务必确保 $where 参数是安全构造的，
+     *                      避免直接拼接未经净化的用户输入，以防 SQL 注入。
+     *                      建议使用命名参数，并将参数值放入 $whereParams 中。
+     * @param array $whereParams WHERE 子句的参数 (例如 ['id' => 123])
+     * @return int 受影响的行数
+     */
     public function update(string $table, array $data, string $where, array $whereParams = []): int
     {
         $set = [];
@@ -141,6 +161,17 @@ class Database
         return $stmt->rowCount();
     }
 
+    /**
+     * 从数据表中删除记录。
+     *
+     * @param string $table 表名
+     * @param string $where WHERE 子句 (例如 "id = :id" 或 "status = 0")
+     *                      警告：请务必确保 $where 参数是安全构造的，
+     *                      避免直接拼接未经净化的用户输入，以防 SQL 注入。
+     *                      建议使用命名参数，并将参数值放入 $params 中。
+     * @param array $params WHERE 子句的参数 (例如 ['id' => 123])
+     * @return int 受影响的行数
+     */
     public function delete(string $table, string $where, array $params = []): int
     {
         $sql = sprintf('DELETE FROM `%s` WHERE %s', $table, $where);

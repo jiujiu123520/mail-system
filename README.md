@@ -12,8 +12,17 @@
 - 🔌 **API 对接**：RESTful API，支持 API Key 认证
 - 🚀 **一键安装**：自动检测系统、自动安装依赖（PHP / MariaDB / Nginx）
 - 🐧 **Linux 部署**：支持 CentOS / Debian / Ubuntu，提供 systemd 服务管理
-- 🔐 **安全功能**：IP封禁、设备指纹追踪、图形验证码、30分钟无操作退出
+- 🔐 **安全功能**：IP封禁、设备指纹追踪、图形验证码、30分钟无操作退出、密码安全传输
 - 📡 **DNS 解析**：支持腾讯云DNS、阿里云DNS、华为云DNS一键解析
+- 📈 **服务器状态监控**：后台实时监控 CPU、内存、磁盘、负载及运行时间
+- ⚡ **邮件发送限速**：后端支持配置每秒邮件发送数量限制
+- 📝 **HTML 邮件撰写**：Web 邮件端集成富文本编辑器，支持 HTML 格式邮件
+- 🗑️ **日志自动清理**：可配置日志文件保留天数，到期自动清理
+- 👨‍👩‍👧‍👦 **用户组与权限**：支持用户分组，为不同用户组配置邮件发送、API 访问等权限
+- 💳 **会员卡密管理**：生成、绑定、使用会员卡密，实现高级功能付费模式
+- 🛡️ **API Key IP 白名单**：限制 API Key 只能在指定的 IP 地址范围内使用，提高安全性
+- 💬 **邮件会话视图**：收件箱支持以会话形式展示邮件，更直观地追踪邮件往来
+- 💻 **服务器状态监控**：后台实时监控 CPU、内存、磁盘、负载及运行时间，并支持自动刷新
 
 ## 📋 系统要求
 
@@ -92,7 +101,6 @@ wget -O mail-system-main.zip https://gh.jasonzeng.dev/https://github.com/jiujiu1
 unzip mail-system-main.zip
 mv mail-system-main mail-system
 cd mail-system
-chmod +x scripts/*.sh
 ```
 
 **第二步：宝塔创建站点**
@@ -240,7 +248,7 @@ ss -tlnp | grep -E '25|465|587|110|995|143|993'
 
 ---
 
-### 方式二：一键安装脚本（纯净系统，自动装依赖）
+### 方式二：通用一键安装脚本（纯净系统，自动装依赖）
 
 适用于 CentOS 7+/Debian 10+/Ubuntu 18+ 全新系统，脚本自动安装 PHP/MySQL/Nginx。
 
@@ -266,15 +274,15 @@ wget -O mail-system-main.zip https://gh.jasonzeng.dev/https://github.com/jiujiu1
 unzip mail-system-main.zip
 mv mail-system-main mail-system
 cd mail-system
-chmod +x scripts/*.sh
 
-# 3. 运行一键安装脚本
-sudo bash scripts/install.sh
+# 3. 运行通用一键安装脚本
+# 脚本位于项目根目录，无需手动 chmod +x
+sudo bash install.sh
 ```
 
-**第二步：交互式配置**
+**第二步：等待自动安装完成**
 
-运行脚本后，会进入交互问答，如下所示：
+脚本会自动完成所有依赖安装、文件部署、数据库初始化、Nginx 配置、防火墙配置和服务启动，整个过程无需人工干预。
 
 ```
 ┌─────────────────────────────────────────────────────┐
@@ -283,49 +291,44 @@ sudo bash scripts/install.sh
 │ ...                                                 │
 │        Self-hosted Mail System v1.0.0                │
 │                                                     │
-│ 即将开始安装，配置如下：                              │
-│   Web 目录:   /var/www/mailsystem                    │
-│   数据库:     mail_user@127.0.0.1:3306/mail_system   │
-│   管理员:     admin / aB3xK9mP2wR7                   │
-│   后台路径:   /admin/                                │
-│   邮件主机名: mail.local                             │
+│ [INFO] 检测到系统: CentOS Linux 7 (Core)            │
+│ [INFO] 使用 yum/dnf 安装依赖...                     │
+│ [ OK ] 依赖安装完成                                 │
+│ [INFO] 部署文件到 /var/www/mailsystem ...           │
+│ [ OK ] 文件已部署                                   │
+│ [INFO] 初始化数据库...                              │
+│ [ OK ] 数据库 mail_system 已创建                    │
+│ [INFO] 生成 .env 配置...                            │
+│ [ OK ] .env 已生成                                  │
+│ [INFO] 运行 Web 安装程序...                         │
+│ [ OK ] 系统已安装                                   │
+│ [INFO] 配置 PHP-FPM...                              │
+│ [ OK ] PHP-FPM 已配置                               │
+│ [INFO] 配置 Nginx...                                │
+│ [ OK ] Nginx 已配置                                 │
+│ [INFO] 配置防火墙...                                │
+│ [ OK ] firewalld 已配置                             │
+│ [INFO] 配置 systemd 服务...                         │
+│ [ OK ] 服务已配置并启动                             │
 │                                                     │
-│ 按 Enter 继续，Ctrl+C 取消...                        │
+│ =================================================== │
+│         MailSystem 安装完成！                       │
+│ =================================================== │
+│                                                     │
+│   后台地址:    http://服务器IP/admin/                │
+│   默认账号:    admin                                 │
+│   默认密码:    aB3xK9mP2wR7                          │
+│                                                     │
+│   邮件协议端口:                                     │
+│     SMTP:    25  (明文) / 465 (SSL) / 587 (STARTTLS)│
+│     POP3:    110 (明文) / 995 (SSL)                  │
+│     IMAP:    143 (STARTTLS) / 993 (SSL)              │
+│                                                     │
+│   ... (其他信息)                                    │
 └─────────────────────────────────────────────────────┘
 ```
 
-**第三步：等待自动安装**
-
-安装脚本会自动完成以下流程（无需人工干预）：
-
-```
-┌─────────────────────────────────────────────────────┐
-│ 进度条                                            │
-│                                                     │
-│ [1/8] 检测系统类型... ✓ CentOS 7.9                  │
-│ [2/8] 安装 PHP/MySQL/Nginx... ✓                     │
-│ [3/8] 部署文件... ✓                                 │
-│ [4/8] 初始化数据库... ✓                             │
-│ [5/8] 生成配置文件... ✓                             │
-│ [6/8] 配置 Nginx... ✓                              │
-│ [7/8] 配置防火墙... ✓                              │
-│ [8/8] 启动服务... ✓                                │
-│                                                     │
-│ ─────────────────────────────────────────────────   │
-│  MailSystem 安装完成！                               │
-│ ─────────────────────────────────────────────────   │
-│                                                     │
-│  后台地址:  http://服务器IP/admin/                   │
-│  默认账号:  admin                                   │
-│  默认密码:  aB3xK9mP2wR7                            │
-│                                                     │
-│  SMTP:   25 / 465 / 587                             │
-│  POP3:   110 / 995                                  │
-│  IMAP:   143 / 993                                  │
-└─────────────────────────────────────────────────────┘
-```
-
-**第四步：访问后台**
+**第三步：访问后台**
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -597,7 +600,7 @@ sudo ufw --force enable
 ### 用户注册与验证
 - **图形验证码**：注册时需输入4位数字验证码，防止机器人注册
 - **注册开关控制**：后台可开启/关闭自助注册功能
-- **密码加密传输**：前端对密码进行SHA256加密后传输
+- **密码安全传输**：前端对密码进行安全传输
 
 ### 登录安全
 - **IP封禁**：管理员可封禁指定IP地址，支持临时封禁（到期自动解封）
@@ -627,6 +630,8 @@ sudo ufw --force enable
 - **API 密钥管理**：生成/吊销 API Key
 - **系统设置**：网站名称、Logo、Maildir 路径
 - **用户管理**：管理员与普通用户 CRUD
+- **用户组管理**：创建/管理用户组，配置用户组权限
+- **会员卡密管理**：生成/绑定/管理会员卡密
 - **系统日志**：操作日志与系统日志
 - **系统信息**：PHP 版本、扩展检测、磁盘空间
 
@@ -660,6 +665,7 @@ curl -X POST http://localhost/api/v1/auth/login \
 curl http://localhost/api/v1/emails \
   -H "X-API-Key: ms_live_xxxxxxxxxxxxxxxx"
 ```
+> **注意**: API Key 支持配置 IP 白名单，限制其只能在特定 IP 地址范围内使用。
 
 ### 主要端点
 | 方法 | 路径 | 说明 |
@@ -683,9 +689,10 @@ curl http://localhost/api/v1/emails \
 mail-system/
 ├── app/                       # 核心代码
 │   ├── Core/                  # 框架核心（Database/Request/Response/Auth/MimeParser...）
-│   ├── Controllers/           # HTTP 控制器
-│   ├── Models/                # 数据模型
+│   ├── Controllers/           # HTTP 控制器 (新增用户组、会员卡密控制器)
+│   ├── Models/                # 数据模型 (新增用户组、会员卡密模型)
 │   └── Services/              # 协议服务端 (SMTP/POP3/IMAP)
+├── install.sh                 # 通用一键安装脚本
 ├── public/                    # Web 入口
 │   ├── admin/                 # 后台管理前端
 │   ├── web/                   # Web 邮件前端
@@ -693,10 +700,10 @@ mail-system/
 │   └── index.php              # 统一入口
 ├── config/                    # 配置文件
 ├── database/                  # 数据库 Schema
-├── scripts/                   # 部署脚本
-│   ├── install.sh             # 一键安装
-│   ├── service.sh             # 服务管理
-│   └── uninstall.sh           # 卸载
+├── scripts/                   # 辅助部署脚本
+│   ├── bt-install.sh          # 宝塔面板一键安装脚本
+│   ├── service.sh             # 服务管理脚本
+│   └── uninstall.sh           # 卸载脚本
 ├── bin/                       # CLI 工具
 │   ├── install-cli.php        # CLI 安装程序
 │   └── services.php           # 邮件服务启停
@@ -704,7 +711,6 @@ mail-system/
 ├── logs/                      # 日志
 ├── data/                      # 邮件存储（Maildir）
 ├── tests/                     # 测试
-└── install/                   # Web 安装向导
 ```
 
 ## 🔧 服务管理
@@ -759,7 +765,7 @@ TXT   _dmarc.yourdomain.com   v=DMARC1; p=quarantine; rua=mailto:admin@yourdomai
 |------|------|
 | 端口未监听 | `php bin/services.php status` / `ss -tlnp \| grep 25` |
 | 邮件无法发送 | 检查 `logs/smtp-*.log` |
-| 邮件无法接收 | 检查 `logs/pop3-*.log` 和 `data/mailboxes/` 权限 |
+| 邮件无法接收 | 检查 `logs/pop3-*.log`、`data/mailboxes/` 权限及 `ms_emails` 表中的 `maildir_filename` 字段 |
 | 后台无法访问 | 检查 `.env` 中 `ADMIN_PATH`、`ADMIN_PORT` 与 Nginx 配置 |
 | 数据库连接失败 | 确认 MariaDB 已启动：`systemctl status mariadb` |
 

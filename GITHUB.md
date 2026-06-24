@@ -27,7 +27,7 @@ git config user.email "your.email@example.com"
 git add .
 
 # 首次提交
-git commit -m "Initial commit: MailSystem v1.0.0"
+git commit -m "Initial commit: MailSystem v1.1.1"
 ```
 
 ## 3. 关联远程仓库并推送
@@ -63,8 +63,8 @@ git push -u origin feature/new-feature
 ## 5. 添加 Release
 
 推送完成后到 GitHub 仓库页面 → Releases → Draft a new release：
-- Tag: `v1.0.0`
-- Title: `MailSystem v1.0.0`
+- Tag: `v1.1.1`
+- Title: `MailSystem v1.1.1`
 - Description: 复制 `CHANGELOG.md` 内容
 - 附件：可以上传 `mail-system-v1.0.0.tar.gz`
 

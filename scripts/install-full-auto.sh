@@ -597,22 +597,13 @@ main() {
     # 宝塔环境特殊处理
     if [ "$IS_BT_ENV" -eq 1 ]; then
         bt_get_mysql_password
-        bt_create_site
+        # 在全自动模式下，跳过宝塔面板手动创建站点的提示
+        # bt_create_site # 移除此行或注释掉
 
-        # 如果用户没有指定数据库密码，提示输入
-        if [ -z "$DB_PASS" ] && [ "$SILENT" -eq 0 ]; then
-            echo
-            echo "宝塔环境检测："
-            echo "  Web 目录:   $WEB_ROOT"
-            echo "  PHP 版本:   ${BT_PHP_VERSION:-需要手动安装}"
-            echo
-            echo "请在宝塔面板中："
-            echo "1. 创建站点（域名如 mail.yourdomain.com）"
-            echo "2. 创建数据库（名称: $DB_NAME，用户: $DB_USER）"
-            echo "3. 记录数据库密码后，在此输入"
-            echo
-            read -p "请输入数据库密码: " DB_PASS
-            [ -z "$DB_PASS" ] && DB_PASS=$(random_password)
+        # 在全自动模式下，即使在宝塔环境，如果未提供密码也自动生成
+        if [ -z "$DB_PASS" ]; then
+            DB_PASS=$(random_password)
+            log_info "宝塔环境：数据库密码已自动生成"
         fi
     fi
 
@@ -621,19 +612,19 @@ main() {
     [ -z "$ADMIN_PASS" ] && ADMIN_PASS=$(random_password)
     [ -z "$ADMIN_EMAIL" ] && ADMIN_EMAIL="admin@$(hostname -d 2>/dev/null || echo localhost)"
 
-    # 静默模式确认
-    if [ "$SILENT" -eq 0 ] && [ -t 0 ]; then
-        echo
-        echo "即将开始安装，配置如下："
-        echo "  Web 目录:   $WEB_ROOT"
-        echo "  数据库:     $DB_USER@$DB_HOST:$DB_PORT/$DB_NAME"
-        echo "  管理员:     $ADMIN_USER / $ADMIN_PASS"
-        echo "  后台路径:   /$ADMIN_PATH/"
-        echo "  邮件主机名: $MAIL_HOSTNAME"
-        [ "$IS_BT_ENV" -eq 1 ] && echo "  环境:       宝塔面板"
-        echo
-        read -p "按 Enter 继续，Ctrl+C 取消..."
-    fi
+    # 静默模式确认 (全自动模式下跳过所有交互)
+    # if [ "$SILENT" -eq 0 ] && [ -t 0 ]; then # 只有在非静默且交互式终端才显示提示
+    #     echo
+    #     echo "即将开始安装，配置如下："
+    #     echo "  Web 目录:   $WEB_ROOT"
+    #     echo "  数据库:     $DB_USER@$DB_HOST:$DB_PORT/$DB_NAME"
+    #     echo "  管理员:     $ADMIN_USER / $ADMIN_PASS"
+    #     echo "  后台路径:   /$ADMIN_PATH/"
+    #     echo "  邮件主机名: $MAIL_HOSTNAME"
+    #     [ "$IS_BT_ENV" -eq 1 ] && echo "  环境:       宝塔面板"
+    #     echo
+    #     read -p "按 Enter 继续，Ctrl+C 取消..."
+    # fi
 
     # 安装依赖（宝塔环境跳过）
     if [ "$SKIP_DEPS" -eq 0 ]; then

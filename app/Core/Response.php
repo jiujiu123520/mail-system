@@ -11,17 +11,19 @@ class Response
 {
     public static function json($data, int $code = 200): void
     {
+        $jsonString = json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
         if (!headers_sent()) {
             http_response_code($code);
             header('Content-Type: application/json; charset=utf-8');
             header('X-Content-Type-Options: nosniff');
+            header('Content-Length: ' . strlen($jsonString));
         }
         // 如果之前有任何非 JSON 输出（例如 PHP Warning echo 到了缓冲区），
         // 这里丢弃缓冲再输出 JSON，保证响应体干净
         while (ob_get_level() > 0) {
             ob_end_clean();
         }
-        echo json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        echo $jsonString;
         exit;
     }
 
@@ -78,6 +80,10 @@ class Response
         if (!headers_sent()) {
             http_response_code($code);
             header('Content-Type: text/html; charset=utf-8');
+        }
+        // 清理所有之前的输出缓冲区
+        while (ob_get_level() > 0) {
+            ob_end_clean();
         }
         echo $content;
         exit;

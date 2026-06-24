@@ -29,11 +29,17 @@ class MailStorage
     {
         $p = $this->path();
         if (!is_dir($p)) {
-            @mkdir($p, 0700, true);
+            if (!mkdir($p, 0700, true)) {
+                Logger::error(sprintf('Failed to create mailbox directory: %s', $p));
+            }
         }
         foreach (['cur', 'new', 'tmp'] as $sub) {
             $d = $p . '/' . $sub;
-            if (!is_dir($d)) @mkdir($d, 0700, true);
+            if (!is_dir($d)) {
+                if (!mkdir($d, 0700, true)) {
+                    Logger::error(sprintf('Failed to create Maildir subdirectory: %s', $d));
+                }
+            }
         }
     }
 
@@ -63,41 +69,45 @@ class MailStorage
 
     private function appendMaildir(string $raw, string $folder): string
     {
-        if ($folder === 'INBOX') {
-            $sub = 'new';
-        } else {
-            $folderDir = $this->path() . '/.' . $folder;
-            if (!is_dir($folderDir)) {
-                @mkdir($folderDir . '/cur', 0700, true);
-                @mkdir($folderDir . '/new', 0700, true);
-                @mkdir($folderDir . '/tmp', 0700, true);
-            }
-            $sub = $folder;
-        }
+        // 确保顶层 Maildir 结构和自定义文件夹结构存在
+        $this->ensureDir();
 
-        $base = $this->path() . '/' . $sub;
-        $filename = sprintf('%d.%06d.%s.%s%s',
+        $uniqueId = sprintf('%d.%06d.%s.%s',
             time(),
             random_int(0, 999999),
             bin2hex(random_bytes(8)),
-            getmypid(),
-            $sub === 'cur' ? ':2,S' : ''
+            getmypid()
         );
-        $tmp = $base . '/' . $filename . '.tmp';
-        $final = rtrim($base, '/') . '/' . $filename;
-        if (str_ends_with($final, '.tmp')) $final = substr($final, 0, -4);
+        $tmpFilename = $uniqueId; // Maildir tmp 文件名不带 .tmp 后缀，而是以 , 开头，或者只是 unique id
 
-        $target = $sub === 'cur' ? $this->path() . '/cur/' . $filename : $this->path() . '/new/' . $filename;
-        $tmpFile = $target . '.tmp';
+        // 写入到顶层 Maildir 的 tmp 目录
+        $tempPath = $this->path() . '/tmp/' . $tmpFilename;
+        
+        if (file_put_contents($tempPath, $raw, LOCK_EX) === false) {
+            throw new \RuntimeException('Failed to write mail temporary file');
+        }
 
-        if (file_put_contents($tmpFile, $raw, LOCK_EX) === false) {
-            throw new \RuntimeException('Failed to write mail tmp file');
+        // 确定最终目标目录
+        $destinationDir = '';
+        if ($folder === 'INBOX') {
+            $destinationDir = $this->path() . '/new'; // 新邮件进入 INBOX/new
+        } else {
+            $folderBase = $this->path() . '/.' . $folder;
+            // 确保自定义文件夹的 new/cur/tmp 存在
+            if (!is_dir($folderBase . '/new')) {
+                @mkdir($folderBase . '/cur', 0700, true);
+                @mkdir($folderBase . '/new', 0700, true);
+                @mkdir($folderBase . '/tmp', 0700, true);
+            }
+            $destinationDir = $folderBase . '/new'; // 自定义文件夹的 new
         }
-        if (!rename($tmpFile, $target)) {
-            @unlink($tmpFile);
-            throw new \RuntimeException('Failed to rename mail file');
+
+        $finalPath = $destinationDir . '/' . $uniqueId; // 最终文件路径
+        if (!rename($tempPath, $finalPath)) {
+            @unlink($tempPath); // 失败时清理临时文件
+            throw new \RuntimeException('Failed to move mail file from tmp to new');
         }
-        return $target;
+        return $uniqueId;
     }
 
     private function appendMbox(string $raw): string

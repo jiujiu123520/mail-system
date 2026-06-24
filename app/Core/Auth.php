@@ -70,11 +70,32 @@ class Auth
         );
         if (!$apiKey) return null;
         if ($apiKey['expires_at'] && strtotime($apiKey['expires_at']) < time()) return null;
-        if (!hash_equals($apiKey['secret_key'], $secretKey)) return null;
+
+        // Check IP whitelist
+        if (!empty($apiKey['whitelist_ips'])) {
+            $whitelist = json_decode($apiKey['whitelist_ips'], true);
+            $currentIp = (new Request())->ip();
+            if (!in_array($currentIp, $whitelist)) {
+                Logger::warn(sprintf('API Key %s authentication failed: IP %s not in whitelist.', $accessKey, $currentIp));
+                return null;
+            }
+        }
+
+        if (!password_verify($secretKey, $apiKey['secret_key'])) return null;
 
         $db->update('ms_api_keys', ['last_used_at' => date('Y-m-d H:i:s')], 'id = :id', ['id' => $apiKey['id']]);
 
         $user = $db->fetchOne('SELECT * FROM ms_users WHERE id = ?', [$apiKey['user_id']]);
+
+        // Check user group API permissions
+        if ($user) {
+            $userPermissions = \MailSystem\Models\User::getPermissions($user['id']);
+            if (isset($userPermissions['api_access']) && $userPermissions['api_access'] === false) {
+                Logger::warn(sprintf('API Key %s authentication failed: User %s has no API access permission.', $accessKey, $user['username']));
+                return null;
+            }
+        }
+
         return $user;
     }
 

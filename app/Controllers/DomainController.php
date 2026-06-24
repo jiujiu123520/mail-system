@@ -5,6 +5,7 @@ namespace MailSystem\Controllers;
 use MailSystem\Core\Auth;
 use MailSystem\Core\Request;
 use MailSystem\Core\Response;
+use MailSystem\Core\Logger;
 use MailSystem\Models\Domain;
 use MailSystem\Models\Setting;
 
@@ -321,9 +322,18 @@ class DomainController extends BaseController
                 CURLOPT_TIMEOUT => 10,
             ]);
             $resp = curl_exec($ch);
+            if ($resp === false) {
+                Logger::error(sprintf('Aliyun DNS sync cURL error: %s', curl_error($ch)), ['domain' => $domain, 'record' => $record]);
+                curl_close($ch);
+                return false;
+            }
+            $decodedResp = json_decode($resp, true);
+            if (isset($decodedResp['Code'])) {
+                Logger::error(sprintf('Aliyun DNS API error: %s', $decodedResp['Message'] ?? 'Unknown error'), ['domain' => $domain, 'record' => $record, 'response' => $decodedResp]);
+            }
             curl_close($ch);
 
-            $results[] = ['record' => $record, 'response' => json_decode($resp, true)];
+            $results[] = ['record' => $record, 'response' => $decodedResp];
         }
         return $results;
     }
@@ -369,9 +379,18 @@ class DomainController extends BaseController
                 CURLOPT_TIMEOUT => 10,
             ]);
             $resp = curl_exec($ch);
+            if ($resp === false) {
+                Logger::error(sprintf('Tencent DNS sync cURL error: %s', curl_error($ch)), ['domain' => $domain, 'record' => $record]);
+                curl_close($ch);
+                return false;
+            }
+            $decodedResp = json_decode($resp, true);
+            if (isset($decodedResp['code']) && $decodedResp['code'] !== 0) {
+                Logger::error(sprintf('Tencent DNS API error: %s', $decodedResp['message'] ?? 'Unknown error'), ['domain' => $domain, 'record' => $record, 'response' => $decodedResp]);
+            }
             curl_close($ch);
 
-            $results[] = ['record' => $record, 'response' => json_decode($resp, true)];
+            $results[] = ['record' => $record, 'response' => $decodedResp];
         }
         return $results;
     }
@@ -400,7 +419,7 @@ class DomainController extends BaseController
 
             $ch = curl_init();
             curl_setopt_array($ch, [
-                CURLOPT_URL => 'https://dns.myhuaweicloud.com/v2/reord/recordsets',
+                CURLOPT_URL => 'https://dns.myhuaweicloud.com/v2/recordsets',
                 CURLOPT_POST => true,
                 CURLOPT_POSTFIELDS => $body,
                 CURLOPT_RETURNTRANSFER => true,
@@ -411,9 +430,20 @@ class DomainController extends BaseController
                 ],
             ]);
             $resp = curl_exec($ch);
+            if ($resp === false) {
+                Logger::error(sprintf('Huawei DNS sync cURL error: %s', curl_error($ch)), ['domain' => $domain, 'record' => $record]);
+                curl_close($ch);
+                return false;
+            }
+            $decodedResp = json_decode($resp, true);
+            // Huawei Cloud DNS API typically returns 200 OK even for errors, with error details in the body
+            // Check for common error indicators in the response body
+            if (isset($decodedResp['error_code']) || isset($decodedResp['code']) && $decodedResp['code'] !== 'DNS.2000') {
+                Logger::error(sprintf('Huawei DNS API error: %s', $decodedResp['message'] ?? $decodedResp['error_msg'] ?? 'Unknown error'), ['domain' => $domain, 'record' => $record, 'response' => $decodedResp]);
+            }
             curl_close($ch);
 
-            $results[] = ['record' => $record, 'response' => json_decode($resp, true)];
+            $results[] = ['record' => $record, 'response' => $decodedResp];
         }
         return $results;
     }

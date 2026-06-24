@@ -41,6 +41,8 @@ return [
         'ssl_key'        => env('SSL_KEY_PATH', ''),
         'smtp_banner'    => env('SMTP_BANNER', 'MailSystem ESMTP'),
         'imap_idle_timeout' => (int) env('IMAP_IDLE_TIMEOUT', 1800),
+        'rate_limit_per_second' => (int) env('EMAIL_RATE_LIMIT_PER_SECOND', 10),
+        'allowed_registration_domains' => json_decode(env('ALLOWED_REGISTRATION_DOMAINS', '[]'), true),
     ],
 
     'api' => [
@@ -52,5 +54,6 @@ return [
     'log' => [
         'path'  => env('LOG_PATH', __DIR__ . '/../logs'),
         'level' => env('LOG_LEVEL', 'info'),
+        'retention_days' => (int) env('LOG_RETENTION_DAYS', 30),
     ],
 ];

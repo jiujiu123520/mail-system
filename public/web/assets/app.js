@@ -1,6 +1,6 @@
 /* Web 邮件前端 */
 
-const { createApp, ref, reactive, onMounted, watch, onUnmounted } = Vue;
+const { createApp, ref, reactive, onMounted, watch, onUnmounted, nextTick } = Vue;
 const API = '/api';
 
 // 设备指纹生成
@@ -51,16 +51,31 @@ createApp({
         const folder = ref('INBOX');
         const currentFolderName = ref('收件箱');
         const emails = ref({ list: [], total: 0 });
+        const currentPage = ref(1);
+        const pageSize = ref(20); // Default page size
         const current = ref(null);
-        const composer = reactive({ show: false, to: '', subject: '', body: '', sending: false });
+        const isConversationView = ref(false);
+        const composer = reactive({ show: false, to: '', subject: '', body_html: '', sending: false, editor: null });
+
+        // API 密钥管理
+        const showApiKeyManager = ref(false);
+        const apiKeys = ref([]);
+        const newApiKeyForm = reactive({ name: '', secret_key: '', expires_at: null, whitelist_ips: [] });
+        const showEditApiKeyDialog = ref(false);
+        const editApiKeyForm = reactive({ id: null, name: '', access_key: '', secret_key: '', expires_at: null, whitelist_ips: [] });
+
+        // 修改密码
+        const showChangePasswordDialog = ref(false);
+        const changePasswordForm = reactive({ old_password: '', new_password: '', confirm_password: '' });
 
         // 注册相关
         const showRegister = ref(false);
-        const registerForm = reactive({ username: '', password: '', email: '', captcha_key: '', captcha_code: '', captcha_svg: '' });
+        const registerForm = reactive({ username: '', password: '', email: '', domain: '', captcha_key: '', captcha_code: '', captcha_svg: '' });
         const registering = ref(false);
         const registerError = ref('');
         const allowRegistration = ref(false);
         const requireCaptcha = ref(true);
+        const allowedRegistrationDomains = ref([]);
 
         // 设备指纹
         const fingerprint = ref('');
@@ -130,17 +145,14 @@ createApp({
             registering.value = true;
             registerError.value = '';
             try {
-                // 前端对密码进行SHA256加密
-                let pwd = registerForm.password;
-                if (!/^[a-f0-9]{64}$/i.test(registerForm.password)) {
-                    pwd = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(registerForm.password)).then(buf => Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join(''));
-                }
+                // 密码直接发送，后端负责哈希
                 await http('/auth/register', {
                     method: 'POST',
                     body: JSON.stringify({
                         username: registerForm.username,
-                        password: pwd,
+                        password: registerForm.password,
                         email: registerForm.email,
+                        domain: registerForm.domain,
                         captcha_key: registerForm.captcha_key,
                         captcha_code: registerForm.captcha_code,
                         fingerprint: fingerprint.value,
@@ -158,22 +170,142 @@ createApp({
             }
         };
 
+        // API Key 管理
+        const loadApiKeys = async () => {
+            try {
+                const data = await http('/api-keys');
+                apiKeys.value = data.list;
+            } catch (e) {
+                ElementPlus.ElMessage.error('加载 API 密钥失败: ' + e.message);
+            }
+        };
+
+        const generateApiKey = async () => {
+            if (!newApiKeyForm.name) {
+                ElementPlus.ElMessage.error('请输入密钥名称');
+                return;
+            }
+            try {
+                await http('/api-keys', {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        name: newApiKeyForm.name,
+                        secret_key: newApiKeyForm.secret_key || undefined,
+                        expires_at: newApiKeyForm.expires_at ? new Date(newApiKeyForm.expires_at).toISOString() : undefined,
+                        whitelist_ips: newApiKeyForm.whitelist_ips,
+                    }),
+                });
+                ElementPlus.ElMessage.success('API 密钥生成成功');
+                newApiKeyForm.name = '';
+                newApiKeyForm.secret_key = '';
+                newApiKeyForm.expires_at = null;
+                newApiKeyForm.whitelist_ips = [];
+                loadApiKeys();
+            } catch (e) {
+                ElementPlus.ElMessage.error('生成 API 密钥失败: ' + e.message);
+            }
+        };
+
+        const editApiKey = (row) => {
+            editApiKeyForm.id = row.id;
+            editApiKeyForm.name = row.name;
+            editApiKeyForm.access_key = row.access_key;
+            editApiKeyForm.secret_key = row.secret_key; // This will be a placeholder, actual secret is not returned
+            editApiKeyForm.expires_at = row.expires_at ? new Date(row.expires_at) : null;
+            editApiKeyForm.whitelist_ips = row.whitelist_ips || [];
+            showEditApiKeyDialog.value = true;
+        };
+
+        const updateApiKey = async () => {
+            try {
+                await http('/api-keys/' + editApiKeyForm.id, {
+                    method: 'PUT',
+                    body: JSON.stringify({
+                        expires_at: editApiKeyForm.expires_at ? new Date(editApiKeyForm.expires_at).toISOString() : null,
+                        whitelist_ips: editApiKeyForm.whitelist_ips,
+                    }),
+                });
+                ElementPlus.ElMessage.success('API 密钥更新成功');
+                showEditApiKeyDialog.value = false;
+                loadApiKeys();
+            } catch (e) {
+                ElementPlus.ElMessage.error('更新 API 密钥失败: ' + e.message);
+            }
+        };
+
+        const deleteApiKey = async (row) => {
+            try { await ElementPlus.ElMessageBox.confirm('确认删除此 API 密钥？', '提示', { type: 'warning' }); } catch (_) { return; }
+            try {
+                await http('/api-keys/' + row.id, { method: 'DELETE' });
+                ElementPlus.ElMessage.success('API 密钥已删除');
+                loadApiKeys();
+            } catch (e) {
+                ElementPlus.ElMessage.error('删除 API 密钥失败: ' + e.message);
+            }
+        };
+
+        // 修改密码
+        const doChangePassword = async () => {
+            if (!changePasswordForm.old_password || !changePasswordForm.new_password || !changePasswordForm.confirm_password) {
+                ElementPlus.ElMessage.error('请填写所有密码字段');
+                return;
+            }
+            if (changePasswordForm.new_password.length < 6) {
+                ElementPlus.ElMessage.error('新密码至少6位');
+                return;
+            }
+            if (changePasswordForm.new_password !== changePasswordForm.confirm_password) {
+                ElementPlus.ElMessage.error('两次输入的新密码不一致');
+                return;
+            }
+
+            try {
+                await http('/user/change-password', {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        old_password: changePasswordForm.old_password,
+                        new_password: changePasswordForm.new_password,
+                    }),
+                });
+                ElementPlus.ElMessage.success('密码修改成功，请重新登录');
+                showChangePasswordDialog.value = false;
+                doLogout(); // Force re-login after password change
+            } catch (e) {
+                ElementPlus.ElMessage.error('修改密码失败: ' + e.message);
+            }
+        };
+
         const selectFolder = (k) => {
             folder.value = k;
             currentFolderName.value = folders.find(f => f.key === k).name;
             current.value = null;
+            currentPage.value = 1; // Reset page when changing folder
             loadEmails();
             resetActivity();
         };
 
         const loadEmails = async () => {
-            const data = await http('/mailboxes/' + user.value.id + '/emails?folder=' + folder.value + '&limit=100');
+            const offset = (currentPage.value - 1) * pageSize.value;
+            const data = await http(`/mailboxes/${user.value.id}/emails?folder=${folder.value}&limit=${pageSize.value}&offset=${offset}`);
             emails.value = data;
         };
 
+        const handlePageChange = (page) => {
+            currentPage.value = page;
+            loadEmails();
+        };
+
         const openEmail = async (e) => {
-            const data = await http('/emails/' + e.id);
-            current.value = data;
+            let data;
+            if (e.conversation_id) {
+                data = await http('/emails/' + e.id + '?conversation=true');
+                current.value = data.conversation;
+                isConversationView.value = true;
+            } else {
+                data = await http('/emails/' + e.id);
+                current.value = data;
+                isConversationView.value = false;
+            }
             e.is_read = 1;
             resetActivity();
         };
@@ -188,25 +320,68 @@ createApp({
         };
 
         const compose = () => {
-            composer.to = ''; composer.subject = ''; composer.body = '';
+            composer.to = ''; composer.subject = ''; composer.body_html = '';
             composer.show = true;
             resetActivity();
+            // 初始化 TinyMCE
+            nextTick(() => {
+                if (composer.editor) {
+                    composer.editor.setContent('');
+                    return;
+                }
+                tinymce.init({
+                    selector: '#tinymce-editor',
+                    height: 200,
+                    menubar: false,
+                    plugins: [
+                        'advlist autolink lists link image charmap print preview anchor',
+                        'searchreplace visualblocks code fullscreen',
+                        'insertdatetime media table paste code help wordcount'
+                    ],
+                    toolbar: 'undo redo | formatselect | ' +
+                        'bold italic backcolor | alignleft aligncenter ' +
+                        'alignright alignjustify | bullist numlist outdent indent | ' +
+                        'removeformat | help',
+                    setup: function (editor) {
+                        editor.on('init', function () {
+                            composer.editor = editor;
+                            editor.setContent(composer.body_html);
+                        });
+                        editor.on('change', function () {
+                            composer.body_html = editor.getContent();
+                        });
+                    }
+                });
+            });
         };
 
         const sendEmail = async () => {
             if (!composer.to) return ElementPlus.ElMessage.error('请输入收件人');
             composer.sending = true;
             try {
-                await http('/emails/send', {
+                const response = await http('/emails/send', {
                     method: 'POST',
                     body: JSON.stringify({
                         from_mailbox_id: user.value.id,
                         to: composer.to.split(',').map(s => s.trim()).filter(Boolean),
                         subject: composer.subject,
-                        body_text: composer.body,
+                        body_html: composer.editor ? composer.editor.getContent() : '',
+                        body_text: composer.editor ? composer.editor.getContent({ format: 'text' }) : '',
                     }),
                 });
-                ElementPlus.ElMessage.success('发送成功');
+                if (response.failed && response.failed.length > 0) {
+                    let errorMessage = '邮件已发送，但部分收件人投递失败：<br>';
+                    response.failed.forEach(f => {
+                        errorMessage += `${f.address}: ${f.reason}<br>`;
+                    });
+                    ElementPlus.ElMessage.warning({
+                        dangerouslyUseHTMLString: true,
+                        message: errorMessage,
+                        duration: 5000,
+                    });
+                } else {
+                    ElementPlus.ElMessage.success('发送成功');
+                }
                 composer.show = false;
                 if (folder.value === 'SENT') loadEmails();
             } catch (e) {
@@ -221,18 +396,14 @@ createApp({
             logging.value = true;
             loginError.value = '';
             try {
-                // 前端对密码进行SHA256加密
-                let pwd = loginForm.password;
-                if (!/^[a-f0-9]{64}$/i.test(loginForm.password)) {
-                    pwd = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(loginForm.password)).then(buf => Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join(''));
-                }
+                // 密码直接发送，后端负责哈希和验证
                 const r = await fetch(API + '/webmail/login', {
                     method: 'POST',
                     credentials: 'include',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         address: loginForm.address,
-                        password: pwd,
+                        password: loginForm.password,
                         fingerprint: fingerprint.value,
                     }),
                 });
@@ -284,6 +455,7 @@ createApp({
                 const pub = await http('/setting/public');
                 allowRegistration.value = pub.allow_registration == '1';
                 requireCaptcha.value = pub.require_captcha !== '0';
+                allowedRegistrationDomains.value = pub.allowed_registration_domains || [];
             } catch (e) {}
 
             // 检查是否已登录
@@ -300,15 +472,31 @@ createApp({
             stopIdleTimer();
         });
 
+        watch(() => composer.show, (newVal) => {
+            if (!newVal && composer.editor) {
+                composer.editor.destroy();
+                composer.editor = null;
+            }
+        });
+
+        watch(() => showApiKeyManager.value, (newVal) => {
+            if (newVal) {
+                loadApiKeys();
+            }
+        });
+
         return {
             loggedIn, logging, loginError, loginForm, user,
             folders, folder, currentFolderName, emails, current,
-            composer,
+            composer, isConversationView,
             showRegister, registerForm, registering, registerError,
-            allowRegistration, requireCaptcha,
+            allowRegistration, requireCaptcha, allowedRegistrationDomains,
             showIdleWarning, idleSeconds,
             selectFolder, loadEmails, openEmail, deleteEmail, compose, sendEmail,
             doLogin, doLogout, loadCaptcha, doRegister, extendSession,
+            currentPage, pageSize, handlePageChange,
+            showApiKeyManager, apiKeys, newApiKeyForm, generateApiKey, editApiKey, updateApiKey, deleteApiKey, showEditApiKeyDialog, editApiKeyForm,
+            showChangePasswordDialog, changePasswordForm, doChangePassword,
         };
     }
 }).use(ElementPlus).mount('#app');

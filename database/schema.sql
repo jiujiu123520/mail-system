@@ -16,6 +16,11 @@ CREATE TABLE `ms_users` (
   `email` varchar(128) DEFAULT NULL,
   `display_name` varchar(64) DEFAULT NULL,
   `role` enum('admin','user') NOT NULL DEFAULT 'user',
+  `group_id` int(11) unsigned DEFAULT NULL COMMENT '用户组ID',
+  `smtp_enabled` tinyint(1) NOT NULL DEFAULT '1' COMMENT '是否启用SMTP协议',
+  `pop3_enabled` tinyint(1) NOT NULL DEFAULT '1' COMMENT '是否启用POP3协议',
+  `imap_enabled` tinyint(1) NOT NULL DEFAULT '1' COMMENT '是否启用IMAP协议',
+  `can_send_email` tinyint(1) NOT NULL DEFAULT '1' COMMENT '是否允许发送邮件 (独立控制)',
   `status` tinyint(1) NOT NULL DEFAULT '1',
   `last_login_at` datetime DEFAULT NULL,
   `last_login_ip` varchar(45) DEFAULT NULL,
@@ -23,7 +28,8 @@ CREATE TABLE `ms_users` (
   `updated_at` datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
   UNIQUE KEY `uk_username` (`username`),
-  KEY `idx_email` (`email`)
+  KEY `idx_email` (`email`),
+  KEY `idx_group_id` (`group_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ----------------------------
@@ -99,6 +105,7 @@ CREATE TABLE `ms_emails` (
   `id` int(11) unsigned NOT NULL AUTO_INCREMENT,
   `mailbox_id` int(11) unsigned NOT NULL,
   `message_id` varchar(255) DEFAULT NULL,
+  `conversation_id` varchar(255) DEFAULT NULL COMMENT '邮件会话ID',
   `from_address` varchar(255) NOT NULL,
   `from_name` varchar(128) DEFAULT NULL,
   `to_addresses` text NOT NULL,
@@ -107,6 +114,7 @@ CREATE TABLE `ms_emails` (
   `subject` varchar(998) DEFAULT NULL,
   `body_text` longtext,
   `body_html` longtext,
+  `maildir_filename` varchar(255) DEFAULT NULL COMMENT 'Maildir 存储的文件名',
   `headers` longtext,
   `size_bytes` int(11) NOT NULL DEFAULT '0',
   `folder` enum('INBOX','SENT','DRAFTS','TRASH','JUNK','STARRED') NOT NULL DEFAULT 'INBOX',
@@ -121,8 +129,42 @@ CREATE TABLE `ms_emails` (
   KEY `idx_mailbox` (`mailbox_id`),
   KEY `idx_folder` (`folder`),
   KEY `idx_status` (`status`),
-  KEY `idx_message_id` (`message_id`)
+  KEY `idx_message_id` (`message_id`),
+  KEY `idx_conversation_id` (`conversation_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ----------------------------
+-- 用户组表
+-- ----------------------------
+DROP TABLE IF EXISTS `ms_user_groups`;
+CREATE TABLE `ms_user_groups` (
+  `id` int(11) unsigned NOT NULL AUTO_INCREMENT,
+  `name` varchar(64) NOT NULL COMMENT '用户组名称',
+  `permissions` text DEFAULT NULL COMMENT '权限列表 (JSON格式)',
+  `description` varchar(255) DEFAULT NULL,
+  `created_at` datetime DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_name` (`name`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ----------------------------
+-- 会员卡密表
+-- ----------------------------
+DROP TABLE IF EXISTS `ms_membership_cards`;
+CREATE TABLE `ms_membership_cards` (
+  `id` int(11) unsigned NOT NULL AUTO_INCREMENT,
+  `card_key` varchar(15) NOT NULL COMMENT '卡密',
+  `user_id` int(11) unsigned DEFAULT NULL COMMENT '绑定的用户ID',
+  `status` enum('unused','used') NOT NULL DEFAULT 'unused' COMMENT '使用状态',
+  `generated_at` datetime DEFAULT CURRENT_TIMESTAMP COMMENT '生成时间',
+  `used_at` datetime DEFAULT NULL COMMENT '使用时间',
+  `created_at` datetime DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_card_key` (`card_key`),
+  KEY `idx_user_id` (`user_id`),
+  KEY `idx_status` (`status`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='会员卡密表';
 
 -- ----------------------------
 -- 附件表
@@ -152,6 +194,7 @@ CREATE TABLE `ms_api_keys` (
   `access_key` varchar(64) NOT NULL,
   `secret_key` varchar(128) NOT NULL,
   `permissions` varchar(255) DEFAULT 'read,send',
+  `whitelist_ips` text DEFAULT NULL COMMENT 'IP白名单 (JSON格式)',
   `status` tinyint(1) NOT NULL DEFAULT '1',
   `expires_at` datetime DEFAULT NULL,
   `last_used_at` datetime DEFAULT NULL,
@@ -272,6 +315,9 @@ CREATE TABLE `ms_captchas` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='图形验证码表';
 
 SET FOREIGN_KEY_CHECKS = 1;
+
+ALTER TABLE `ms_users`
+ADD CONSTRAINT `fk_user_group` FOREIGN KEY (`group_id`) REFERENCES `ms_user_groups` (`id`) ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- ============================================
 -- 初始化数据

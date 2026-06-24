@@ -230,7 +230,7 @@ main() {
     fi
 
     # 优先使用自动获取的 root 密码
-    [ -n "$BT_ROOT_PASS" ] && [ -z "$DB_ROOT_PASS" ] && DB_ROOT_PASS="$BT_ROOT_PASS"
+    [ -z "$DB_ROOT_PASS" ] && [ -n "$BT_ROOT_PASS" ] && DB_ROOT_PASS="$BT_ROOT_PASS"
 
     echo
     read -p "按 Enter 开始部署，Ctrl+C 取消... " _
@@ -275,7 +275,7 @@ main() {
     # ============ 5. 生成 .env ============
     log_info "生成配置文件..."
     APP_KEY=$(tr -dc 'A-Za-z0-9%&*()_+-=' </dev/urandom | head -c 32)
-    [ -z "$MAIL_HOSTNAME" ] && MAIL_HOSTNAME="mail.local"
+    [ -z "$MAIL_HOSTNAME" ] && MAIL_HOSTNAME="$INSTALL_DOMAIN"
 
     cat > "$WEB_ROOT/.env" <<ENVEOF
 APP_KEY=$APP_KEY

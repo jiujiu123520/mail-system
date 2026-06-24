@@ -55,16 +55,14 @@ class AuthController extends BaseController
             Response::error('用户名或密码错误', 401, 401);
         }
 
-        // 记录登录设备
-        if ($fingerprint) {
-            Device::recordLogin($user['id'], $fingerprint, $ip, $ua);
-
-            // 检查设备是否被拉黑
-            $device = Device::findByFingerprint($fingerprint, $user['id']);
-            if ($device && $device['is_blocked']) {
-                Response::error('该设备已被拉黑，请联系管理员', 403, 403);
+        // 检查设备是否被拉黑 (先检查再记录)
+            if ($fingerprint) {
+                $device = Device::findByFingerprint($fingerprint, $user['id']);
+                if ($device && $device['is_blocked']) {
+                    Response::error('该设备已被拉黑，请联系管理员', 403, 403);
+                }
+                Device::recordLogin($user['id'], $fingerprint, $ip, $ua);
             }
-        }
 
         // 更新用户最后登录信息
         User::update($user['id'], [
@@ -197,11 +195,20 @@ class AuthController extends BaseController
 
         $username = trim((string) $req->input('username'));
         $password = (string) $req->input('password');
+        $domain = trim((string) $req->input('domain', '')); // New: domain for registration
         $email = trim((string) $req->input('email', ''));
 
-        if ($username === '' || strlen($password) < 6) {
-            Response::error('用户名必填，密码至少6位', 400, 400);
+        if ($username === '' || strlen($password) < 6 || $domain === '') {
+            Response::error('用户名、密码和域名必填，密码至少6位', 400, 400);
         }
+
+        // 验证域名是否允许注册
+        $allowedDomains = json_decode(Setting::get('allowed_registration_domains', '[]'), true);
+        if (!in_array($domain, $allowedDomains)) {
+            Response::error('该域名不允许注册', 400, 400);
+        }
+
+        $fullAddress = $username . '@' . $domain;
 
         if (!preg_match('/^[a-zA-Z0-9_]{3,32}$/', $username)) {
             Response::error('用户名只能包含字母、数字、下划线，长度3-32位', 400, 400);
@@ -211,17 +218,30 @@ class AuthController extends BaseController
             Response::error('用户名已存在', 400, 400);
         }
 
-        // 前端传来的密码是SHA256加密后的，验证后重新哈希存储
-        // 如果前端没有加密，则直接使用
-        $passwordHash = strlen($password) === 64 && preg_match('/^[a-f0-9]{64}$/', $password)
-            ? password_hash($password, PASSWORD_DEFAULT)
-            : password_hash($password, PASSWORD_DEFAULT);
+        if (Mailbox::findByAddress($fullAddress)) {
+            Response::error('邮箱地址已存在', 400, 400);
+        }
+
+        // 对密码进行哈希存储 (假设前端发送明文密码，通过TLS传输，服务器端进行哈希)
+            $passwordHash = password_hash($password, PASSWORD_DEFAULT);
 
         $id = User::create([
             'username' => $username,
             'password' => $passwordHash,
             'email' => $email,
             'role' => 'user',
+            'status' => 1,
+        ]);
+
+        // 为新用户创建邮箱
+        Mailbox::create([
+            'user_id' => $id,
+            'domain' => $domain,
+            'local_part' => $username,
+            'full_address' => $fullAddress,
+            'display_name' => $username,
+            'password' => $passwordHash, // 邮箱密码与用户密码一致
+            'quota_mb' => 1024, // 默认1GB配额
             'status' => 1,
         ]);
 

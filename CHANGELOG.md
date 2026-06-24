@@ -1,6 +1,23 @@
 # 更新日志
 
-## [1.1.1] - 2026-06-23
+## [1.1.2] - 2026-06-23
+
+### 修复
+
+- **API 500 "服务暂不可用" / Parse error on line 34**：修复 `public/api.php` 缺少控制器 `use` 命名空间声明，导致 PHP 运行时无法解析 `AuthController::class` 等短类名，触发 fatal error 被 Bootstrap 全局处理器统一包装为 "服务暂不可用"。
+- **前端显示 `{{ idleSeconds }}` / `{{ registerError }}` 模板语法**：修复 `public/admin/index.html` 与 `public/web/index.html` 中 Vue/Element Plus 仅依赖 `unpkg.com` 单一 CDN，国内/宝塔内网环境下加载失败后 Vue 模板未被解析，模板变量原样输出。已替换为多 CDN 回退加载器（unpkg → jsdelivr → staticfile）。
+- **路由方法名对齐**：将 `/mailboxes/{id}/emails` 路由方法从 `listForMailbox` 修正为控制器中实际方法名 `list`。
+
+### 改动文件
+
+| 文件 | 说明 |
+|---|---|
+| `public/api.php` | 顶部加入 12 个控制器 `use` 声明；所有路由改为短类名格式 |
+| `public/admin/index.html` | Vue/Element Plus 多 CDN 回退加载器 |
+| `public/web/index.html` | 同上（webmail 页面） |
+
+---
+
 
 ### 修复
 - 修复 `DomainController.php` 中华为云 DNS API 端点拼写错误 (`reord` -> `record`)
